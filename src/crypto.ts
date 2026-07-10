@@ -162,3 +162,15 @@ export async function zeroKey(key: Uint8Array): Promise<void> {
   const s = await ensureSodium()
   s.memzero(key)
 }
+
+// ── Base64 helpers (re-exports from sodium for consistent encoding) ──────────
+
+export async function to_base64(data: Uint8Array): Promise<string> {
+  const s = await ensureSodium()
+  return s.to_base64(data, s.base64_variants.URLSAFE_NO_PADDING)
+}
+
+export async function from_base64(data: string): Promise<Uint8Array> {
+  const s = await ensureSodium()
+  return s.from_base64(data, s.base64_variants.URLSAFE_NO_PADDING)
+}
