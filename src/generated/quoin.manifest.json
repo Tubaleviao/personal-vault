@@ -1,0 +1,108 @@
+{
+  "generatedAt": "2026-07-10T16:17:01.849Z",
+  "schemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9",
+  "files": [
+    {
+      "path": "typescript/index.ts",
+      "generator": "typescript",
+      "contentHash": "sha256:e5a2457cb191d459e2e34564014a3dac72f80e906352a8db46c2b6da61fdb184",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "openapi/openapi.yaml",
+      "generator": "openapi",
+      "contentHash": "sha256:131fe5e4ce295d45884ed6d8ce386cf56ceb5e5e30883ce25582d2c5c850ecb3",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "sql/schema.sql",
+      "generator": "sql",
+      "contentHash": "sha256:aad009bbfdc15a2dbbb4795517a409a2a758d80ac10b9bb2f9e3642ac424190f",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "sql/migrations/000001__init_0_1_0.sql",
+      "generator": "sql",
+      "contentHash": "sha256:095731c5459eacc6e824a83c8fe058cc54e40cff184ecdb00284ba62f957e0cd",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "docs/entities/VaultUser.md",
+      "generator": "docs",
+      "contentHash": "sha256:2fc7dc9791d4ccbcd8dfd38165923be4bdb05728fb136e4e8eb6cd59b287cb69",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "docs/entities/Claim.md",
+      "generator": "docs",
+      "contentHash": "sha256:07969acf373d451db33a69c1a7229f4e42f707a148a5b0f9072c3535ace4c67c",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "docs/entities/Grant.md",
+      "generator": "docs",
+      "contentHash": "sha256:f229616cdccfd0cb6bd2afccba8f166f0d792a81762ac3e5b8724a4b31645746",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "docs/entities/AuditEntry.md",
+      "generator": "docs",
+      "contentHash": "sha256:343428601fc199ec67cbd9acd6a09f676408e7daf2389cd80058bb3b3beb25d3",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "docs/apis/VaultAPI.md",
+      "generator": "docs",
+      "contentHash": "sha256:80d8f13def583257c730e8bf3ec402621e7a06fe2c4060f6d7e59a8a02cb0555",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "docs/apis/RelayAPI.md",
+      "generator": "docs",
+      "contentHash": "sha256:318d1a5b1ba62eea1fed8227e01872a341824de448e418338bd4e847bdf6eed7",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "docs/gdpr-data-map.md",
+      "generator": "docs",
+      "contentHash": "sha256:eb158890f285e03e373aa20f87606f0695e2b1dcc14e59bb0a16ab81d8aa23e2",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "jsonschema/VaultUser.schema.json",
+      "generator": "jsonschema",
+      "contentHash": "sha256:db660e885d5aa1666743b64d1f3231392d36ee338de97fab0ab90659febd6c7d",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "jsonschema/Claim.schema.json",
+      "generator": "jsonschema",
+      "contentHash": "sha256:3c66f2ebe468b78ee8bb077355807a0f5dda2c7250bdbc230178db7d11926fdf",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "jsonschema/Grant.schema.json",
+      "generator": "jsonschema",
+      "contentHash": "sha256:31608483f05796af0679eb710d11209622727065329c059aae0e513175ef16aa",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "jsonschema/AuditEntry.schema.json",
+      "generator": "jsonschema",
+      "contentHash": "sha256:610647566822bb93904cc5968dca3330c29a6f2472866ca10ebb44aaf9b5da1b",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "rdf/ontology.ttl",
+      "generator": "rdf",
+      "contentHash": "sha256:1f7601669d797ef3ab7156fa5765ba2fb7554ee35afc0ff899f11d9f0f09affc",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    },
+    {
+      "path": "owl/ontology.owl.ttl",
+      "generator": "owl",
+      "contentHash": "sha256:0c3feee7ba3f735c8a7d96ad9480668a9bbbebb21376960d91b137ffcb042691",
+      "fromSchemaHash": "sha256:2ad175c87d9b5c3a60fd74b5990e8f7d3f1c32b2df825e99eb04dea430b7efa9"
+    }
+  ]
+}

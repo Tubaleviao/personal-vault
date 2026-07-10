@@ -1,5 +1,4 @@
 node_modules/
 dist/
-src/generated/
 *.ir-snapshot.json
 .quoin-manifest.json
