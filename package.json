@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "User-owned personal data vault with granular, revocable, auditable consent",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
     "validate":    "quoin validate    -s ./src/fabric.ts",
     "inspect":     "quoin inspect     -s ./src/fabric.ts",
