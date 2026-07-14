@@ -12,7 +12,7 @@ Own your data. Control who reads it. Revoke access at any time.
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | Encrypted local storage | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Open source | ❌ | ✅ | ❌ | — | ✅ | ✅ |
-| Browser auto-fill | ✅ | ✅ | ✅ | ✅ | ❌ | 🔜 |
+| Browser auto-fill | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Cross-device sync | ✅ | ✅ | ✅ | ✅ | ✅ | 🔜 |
 | BIP-39 recovery phrase | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Self-sovereign DID identity | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
@@ -62,6 +62,14 @@ The key difference: password managers store and replay credentials on your behal
 **Recovery**
 - 12-word BIP-39 mnemonic phrase — lose your device, restore your vault anywhere
 - Only a SHA-256 commitment to the phrase is stored in the vault header — the phrase itself is never persisted
+
+**Browser extension (Chrome / Chromium)**
+- Detects form fields on any webpage and matches them against vault claim types
+- Shows an inline approval banner before filling anything — no data leaves the vault without an explicit user action
+- Per-site, per-field approval: choose exactly which claims a site may receive
+- "Fill once" or "Always allow" — persistent approvals are stored in extension local storage and backed by a vault grant in the audit log
+- Revoke any site's access from the popup at any time; revoked sites receive `APPROVAL_REVOKED` on the next visit instead of being re-prompted
+- The vault is unlocked in the extension popup with your passphrase; locking zeroes the master key from the service worker's memory
 
 ---
 
@@ -202,6 +210,26 @@ const { valid, firstBadIndex } = verifyChain(entries)
 console.log(formatAuditLog(entries))
 ```
 
+### Browser extension
+
+Build the extension bundle and load it into Chrome:
+
+```bash
+# Build once
+node extension/build.mjs
+
+# Watch mode (rebuilds on file change)
+node extension/build.mjs --watch
+```
+
+Output goes to `extension/dist/`. In Chrome, open `chrome://extensions`, enable **Developer Mode**, click **Load unpacked**, and select the `extension/dist/` directory.
+
+Once loaded:
+1. Click the extension icon and enter your vault passphrase to unlock.
+2. Navigate to any page with a form — an approval banner appears listing matched claim types.
+3. Choose **Fill once** or **Always allow**. The vault fills the matching fields.
+4. Manage or revoke site approvals from the popup at any time.
+
 ### Schema commands
 
 After editing `src/fabric.ts`, regenerate all artifacts:
@@ -228,7 +256,7 @@ npm run check-drift   # warn if any generated file was manually edited
 | DID identity layer (`did:key`) | ✅ Done |
 | Tamper-evident audit log | ✅ Done |
 | Consent & grant layer (create, validate, revoke) | ✅ Done |
-| Browser extension (auto-fill with per-site approval) | 🔜 Planned |
+| Browser extension (auto-fill with per-site approval) | ✅ Done |
 | Cross-device sync relay | 🔜 Planned |
 | Mobile apps (iOS, Android) | 🔜 Planned |
 | Full SD-JWT spec conformance | 🔜 Planned |

@@ -19,6 +19,14 @@ There is no build step for day-to-day development — source files are run direc
 node -r ./node_modules/tsx/dist/cjs/index.cjs <file.ts>
 ```
 
+**Browser extension build** (`extension/`):
+```bash
+node extension/build.mjs          # build once → extension/dist/
+node extension/build.mjs --watch  # watch mode
+```
+
+Load `extension/dist/` as an unpacked extension in `chrome://extensions` (Developer Mode on).
+
 **Quoin schema commands** (after editing `src/fabric.ts`):
 ```bash
 npm run validate      # check schema for errors — no files written
@@ -82,6 +90,59 @@ src/fabric.ts — Single source of truth for the data model. Edit this, then
                 run `npm run generate`. Never edit src/generated/.
 ```
 
+### Browser extension (`extension/`)
+
+Built with esbuild (see `extension/build.mjs`). Output goes to `extension/dist/`; load as an unpacked Chrome extension.
+
+```
+extension/messages.ts      — Typed discriminated-union message protocol for all
+                             three communication channels:
+                               ContentToBackground | BackgroundToContent
+                               PopupToBackground   | BackgroundToPopup
+                             Single source of truth for message shapes — both
+                             ends import from here. Never use untyped raw
+                             sendMessage calls.
+
+extension/background.ts    — Background service worker. Sole holder of the
+                             unlocked Vault instance. Handles all vault I/O,
+                             approval logic, and fill-map construction. A single
+                             onMessage listener dispatches all message types
+                             through handleMessage(). Stores SiteApproval
+                             records in chrome.storage.local (tombstone on
+                             revoke; never delete, so APPROVAL_REVOKED can fire
+                             on revisit).
+
+extension/content.ts       — Content script injected at document_idle. Detects
+                             form fields via FILL_RULES selectors and exact
+                             autocomplete token matching (split(' ').includes,
+                             not substring). Sends FORM_DETECTED; injects fill
+                             values from FILL_DATA; shows the approval banner
+                             and fill confirmation toast. Holds no vault state
+                             between page loads.
+
+extension/popup/popup.ts   — Popup UI. Unlock / lock the vault (UNLOCK_VAULT /
+                             LOCK_VAULT messages). Lists and revokes site
+                             approvals. Uses isSiteApprovalValid from
+                             form-filler.ts — never re-implements the check.
+
+src/form-filler.ts         — Vault-side library shared by the extension.
+                             FILL_RULES: claim-type → CSS selectors +
+                             autocomplete tokens. buildFillMap(): Claim[] →
+                             FillMap. SiteApproval type + buildSiteApproval()
+                             + isSiteApprovalValid() (checks both expiresAt
+                             and revoked flag). filterFillMapForSite() is
+                             exported but is a no-op when claims are
+                             pre-filtered — call sites in background.ts omit it.
+```
+
+**Extension invariants**
+
+- **One dispatcher.** All popup and content-script message types flow through the single `handleMessage` async function. No second `onMessage` listener for lifecycle messages.
+- **Revoke = tombstone, not delete.** `REVOKE_APPROVAL` sets `revoked: true` on the `SiteApproval` record; it is never removed from storage. This allows `FORM_DETECTED` to find the record and send `APPROVAL_REVOKED` instead of re-prompting.
+- **Autocomplete matching is exact-token.** `autocomplete.split(' ').includes(token)` — not `autocomplete.includes(token)` — to prevent `'given-name'` from matching the `'name'` token.
+- **FILL_RULES constants are module-level.** `KNOWN_SELECTORS` and `KNOWN_AUTOCOMPLETE` in content.ts are computed once at load time, not inside `detectFields()`.
+- **Claims are pre-filtered before buildFillMap.** All three `FILL_DATA` send sites in background.ts filter `allClaims` to approved types before calling `buildFillMap`; `filterFillMapForSite` is therefore not called at those sites.
+
 ### Key invariants
 
 - **No plaintext leaves the vault.** `Claim.value` is always stored encrypted inside the vault blob. The vault blob itself is XChaCha20-Poly1305 encrypted with the scrypt-derived master key.
@@ -120,12 +181,12 @@ src/fabric.ts — Single source of truth for the data model. Edit this, then
 | Phase 2, Step 2.3 | DID identity layer: did:key generation, VC import stub, SD-JWT framing | `did.ts` |
 | Phase 3, Step 3.2.5 | Audit log screen data: hash chain, tamper detection, display format | `audit.ts` |
 | Phase 2, Steps 2.4 / Phase 3, Step 3.2.7 | Grant consent layer: create, sign, validate, revoke | `consent.ts` |
+| Phase 3, Step 3.2.4 | Browser extension: form-filler with per-site/per-field approval, popup, MV3 service worker | `extension/`, `src/form-filler.ts` |
 
 ### Pending
 
 | Step | What |
 |---|---|
-| Phase 3, Step 3.2.4 | **Wedge feature:** browser extension that fills web forms from the vault (user approves per-site, per-field) |
 | Phase 3, Step 3.2.6 | **Sync relay + second device:** encrypted-blob relay (VPS or Cloudflare Workers + R2), pull grants, multi-device sync |
 | Phase 3, Step 3.2.7 (partial) | Pull grants (revocation is done; relay-side enforcement is not) |
 | Phase 3, Step 3.3 | Security hygiene: STRIDE threat model doc, CI dependency audit, plan for external crypto review |
