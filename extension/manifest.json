@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Personal Vault Form Filler",
+  "version": "0.1.0",
+  "description": "Fill web forms from your personal vault. You approve per-site, per-field. No data is shared without your consent.",
+
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "action": {
+    "default_popup": "popup/index.html",
+    "default_title": "Personal Vault"
+  },
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
