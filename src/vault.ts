@@ -19,7 +19,7 @@ import {
 } from './crypto'
 import type { EncryptedBlob } from './crypto'
 
-// ── Types mirroring the quoin schema ────────────────────────────────────────
+// ── Types mirroring the newel schema ────────────────────────────────────────
 
 export type ClaimSource = 'self-attested' | 'issuer-signed' | 'imported'
 export type ClaimVerification = 'none' | 'self' | 'verified'

@@ -7,19 +7,19 @@
   "scripts": {
     "validate":    "quoin validate    -s ./src/fabric.ts",
     "inspect":     "quoin inspect     -s ./src/fabric.ts",
-    "generate":    "quoin generate    -c ./quoin.config.ts",
-    "diff":        "quoin diff        -c ./quoin.config.ts",
-    "check-drift": "quoin check-drift -c ./quoin.config.ts"
+    "generate":    "quoin generate    -c ./newel.config.ts",
+    "diff":        "quoin diff        -c ./newel.config.ts",
+    "check-drift": "quoin check-drift -c ./newel.config.ts"
   },
   "dependencies": {
-    "@quoin/core": "file:../quoin/packages/core",
-    "@quoin/generator-typescript": "file:../quoin/packages/generator-typescript",
-    "@quoin/generator-openapi": "file:../quoin/packages/generator-openapi",
-    "@quoin/generator-sql": "file:../quoin/packages/generator-sql",
-    "@quoin/generator-docs": "file:../quoin/packages/generator-docs",
-    "@quoin/generator-jsonschema": "file:../quoin/packages/generator-jsonschema",
-    "@quoin/generator-rdf": "file:../quoin/packages/generator-rdf",
-    "@quoin/generator-owl": "file:../quoin/packages/generator-owl",
+    "@newel/core": "^0.0.1",
+    "@newel/generator-typescript": "^0.0.1",
+    "@newel/generator-openapi": "^0.0.1",
+    "@newel/generator-sql": "^0.0.1",
+    "@newel/generator-docs": "^0.0.1",
+    "@newel/generator-jsonschema": "^0.0.1",
+    "@newel/generator-rdf": "^0.0.1",
+    "@newel/generator-owl": "^0.0.1",
     "libsodium-wrappers": "^0.7.13",
     "bip39": "^3.1.0"
   },

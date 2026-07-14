@@ -1,4 +1,4 @@
-import { fabric } from '@quoin/core'
+import { fabric } from '@newel/core'
 
 export default fabric()
   .meta(m => m

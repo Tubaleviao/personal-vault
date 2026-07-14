@@ -113,7 +113,7 @@ src/fabric.ts — Single source of truth for the data model. Edit this, then
 | Step | What | Module |
 |---|---|---|
 | Phase 2, Steps 2.2–2.5 | Data model, consent protocol, identity layer, system diagram | `src/fabric.ts` + `src/generated/` |
-| Phase 3, Step 3.1 | Stack selection, project scaffold | `package.json`, `quoin.config.ts` |
+| Phase 3, Step 3.1 | Stack selection, project scaffold | `package.json`, `newel.config.ts` |
 | Phase 3, Step 3.2.1 | Vault core: create/open/lock, claims CRUD, encrypted persistence | `vault.ts`, `crypto.ts` |
 | Phase 3, Step 3.2.2 | Backup & restore via BIP-39 recovery phrase | `recovery.ts` |
 | Phase 3, Step 3.2.3 | Push sharing: signed encrypted bundle, verifier with badges | `sharing.ts` |
