@@ -93,6 +93,17 @@ export interface MsgGetVaultStatus {
   type: 'GET_VAULT_STATUS'
 }
 
+/** Popup asks the background to unlock the vault with a passphrase. */
+export interface MsgUnlockVault {
+  type: 'UNLOCK_VAULT'
+  passphrase: string
+}
+
+/** Popup asks the background to lock the vault and clear the in-memory session. */
+export interface MsgLockVault {
+  type: 'LOCK_VAULT'
+}
+
 // ── Background → Popup ────────────────────────────────────────────────────────
 
 export interface MsgApprovalsListResult {
@@ -104,6 +115,13 @@ export interface MsgVaultStatus {
   type: 'VAULT_STATUS'
   unlocked: boolean
   ownerDid: string | null
+}
+
+/** Response to an UNLOCK_VAULT request. */
+export interface MsgUnlockResult {
+  type: 'UNLOCK_RESULT'
+  ok: boolean
+  error?: string
 }
 
 // ── Union types ───────────────────────────────────────────────────────────────
@@ -124,7 +142,10 @@ export type PopupToBackground =
   | MsgListApprovals
   | MsgRevokeApproval
   | MsgGetVaultStatus
+  | MsgUnlockVault
+  | MsgLockVault
 
 export type BackgroundToPopup =
   | MsgApprovalsListResult
   | MsgVaultStatus
+  | MsgUnlockResult

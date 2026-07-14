@@ -222,6 +222,9 @@ export interface SiteApproval {
   grantId: string         // the Grant in the vault that backs this approval
   createdAt: string
   expiresAt: string | null
+  /** Explicitly revoked by the user via the popup. A revoked approval is kept as a tombstone
+   *  so the background can send APPROVAL_REVOKED instead of re-prompting. */
+  revoked?: boolean
 }
 
 /**
@@ -246,9 +249,10 @@ export function buildSiteApproval(options: {
 }
 
 /**
- * Check whether a SiteApproval is still valid (not expired).
+ * Check whether a SiteApproval is still valid (not expired and not revoked).
  */
 export function isSiteApprovalValid(approval: SiteApproval): boolean {
+  if (approval.revoked) return false
   if (!approval.expiresAt) return true
   return new Date(approval.expiresAt) > new Date()
 }
@@ -266,14 +270,15 @@ export function filterFillMapForSite(fillMap: FillMap, approvedClaimTypes: strin
 
 function claimValueToString(claimType: string, value: unknown): string | null {
   if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value
-  if (typeof value === 'number') return String(value)
 
-  // Date-like claims: normalise to YYYY-MM-DD for date inputs
+  // Date-like claims: normalise to YYYY-MM-DD for date inputs (must precede the generic string guard)
   if (claimType === 'schema:birthDate' && typeof value === 'string') {
     const d = new Date(value)
     if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
   }
+
+  if (typeof value === 'string') return value
+  if (typeof value === 'number') return String(value)
 
   if (typeof value === 'object') {
     // Structured address object — for addressLocality, addressRegion, etc.

@@ -29,7 +29,7 @@ import type {
 } from './messages'
 import type { SiteApproval } from '../src/form-filler'
 import {
-  buildFillMap, buildSiteApproval, isSiteApprovalValid, filterFillMapForSite, FILL_RULES,
+  buildFillMap, buildSiteApproval, isSiteApprovalValid, FILL_RULES,
 } from '../src/form-filler'
 import type { Vault, PersistedVault } from '../src/vault'
 
@@ -73,7 +73,7 @@ function matchAvailableClaimTypes(
 
     const hasMatchingField = detectedFields.some(field => {
       const autocompleteMatch = field.autocomplete
-        ? rule.autocompleteTokens.some(t => field.autocomplete!.includes(t))
+        ? rule.autocompleteTokens.some(t => field.autocomplete!.split(' ').includes(t))
         : false
 
       const selectorMatch = rule.selectors.some(sel => {
@@ -112,6 +112,47 @@ async function handleMessage(
   message: ContentToBackground | PopupToBackground,
   sendResponse: (response: BackgroundToContent | BackgroundToPopup | null) => void,
 ): Promise<void> {
+  // ── Vault lifecycle messages ───────────────────────────────────────────────
+
+  if (message.type === 'UNLOCK_VAULT') {
+    if (!message.passphrase) {
+      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'No passphrase' })
+      return
+    }
+
+    const blob = await loadVaultBlob()
+    if (!blob) {
+      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'No vault found' })
+      return
+    }
+
+    try {
+      const { Vault } = await import('../src/vault')
+      const vault = await Vault.open(blob, message.passphrase)
+      // The DID keypair is derived from the mnemonic in the full flow;
+      // for now the passphrase-only path leaves the private key as a placeholder.
+      session = {
+        vault,
+        ownerDid: vault.owner.did,
+        ownerPrivateKey: new Uint8Array(0),  // placeholder — full flow via mnemonic restore
+        ownerPublicKey: new Uint8Array(0),
+      }
+      sendResponse({ type: 'UNLOCK_RESULT', ok: true })
+    } catch (err) {
+      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: String(err) })
+    }
+    return
+  }
+
+  if (message.type === 'LOCK_VAULT') {
+    if (session) {
+      session.vault.lock().catch(() => { /* best effort */ })
+      session = null
+    }
+    sendResponse(null)
+    return
+  }
+
   // ── Popup messages ─────────────────────────────────────────────────────────
 
   if (message.type === 'GET_VAULT_STATUS') {
@@ -125,22 +166,26 @@ async function handleMessage(
 
   if (message.type === 'LIST_APPROVALS') {
     const approvals = await loadApprovals()
-    sendResponse({ type: 'APPROVALS_LIST', approvals })
+    // Only surface non-revoked approvals to the popup
+    sendResponse({ type: 'APPROVALS_LIST', approvals: approvals.filter(isSiteApprovalValid) })
     return
   }
 
   if (message.type === 'REVOKE_APPROVAL') {
     const approvals = await loadApprovals()
-    const updated = approvals.filter(a => a.id !== message.approvalId)
+    // Mark as revoked (tombstone) rather than deleting so APPROVAL_REVOKED can be sent on revisit
+    const updated = approvals.map(a =>
+      a.id === message.approvalId ? { ...a, revoked: true } : a
+    )
     await saveApprovals(updated)
     // Also revoke the corresponding vault grant if vault is unlocked
     if (session) {
-      const revoked = approvals.find(a => a.id === message.approvalId)
-      if (revoked) {
-        try { session.vault.revokeGrant(revoked.grantId) } catch { /* grant may already be gone */ }
+      const target = approvals.find(a => a.id === message.approvalId)
+      if (target) {
+        try { session.vault.revokeGrant(target.grantId) } catch { /* grant may already be gone */ }
       }
     }
-    sendResponse({ type: 'APPROVALS_LIST', approvals: updated })
+    sendResponse({ type: 'APPROVALS_LIST', approvals: updated.filter(isSiteApprovalValid) })
     return
   }
 
@@ -160,13 +205,13 @@ async function handleMessage(
       const allClaims = session.vault.listClaims()
       const approved = allClaims.filter(c => existing.claimTypes.includes(c.type))
       const fillMap = buildFillMap(approved)
-      const filtered = filterFillMapForSite(fillMap, existing.claimTypes)
-      sendResponse({ type: 'FILL_DATA', fillMap: filtered })
+      sendResponse({ type: 'FILL_DATA', fillMap })
       return
     }
 
-    // Check if this site was previously revoked
-    const revoked = approvals.find(a => a.origin === message.origin && !isSiteApprovalValid(a))
+    // Check if this site was explicitly revoked — send APPROVAL_REVOKED so the
+    // content script silently skips rather than re-prompting the user.
+    const revoked = approvals.find(a => a.origin === message.origin && a.revoked)
     if (revoked) {
       sendResponse({ type: 'APPROVAL_REVOKED', origin: message.origin })
       return
@@ -194,7 +239,6 @@ async function handleMessage(
     const allClaims = session.vault.listClaims()
     const approved = allClaims.filter(c => message.claimTypes.includes(c.type))
     const fillMap = buildFillMap(approved)
-    const filtered = filterFillMapForSite(fillMap, message.claimTypes)
 
     if (message.persist) {
       // Record a pull-mode grant in the vault for the audit log
@@ -231,7 +275,7 @@ async function handleMessage(
       await saveApprovals(approvals)
     }
 
-    sendResponse({ type: 'FILL_DATA', fillMap: filtered })
+    sendResponse({ type: 'FILL_DATA', fillMap })
     return
   }
 
@@ -251,8 +295,7 @@ async function handleMessage(
     const allClaims = session.vault.listClaims()
     const approved = allClaims.filter(c => existing.claimTypes.includes(c.type))
     const fillMap = buildFillMap(approved)
-    const filtered = filterFillMapForSite(fillMap, existing.claimTypes)
-    sendResponse({ type: 'FILL_DATA', fillMap: filtered })
+    sendResponse({ type: 'FILL_DATA', fillMap })
     return
   }
 
@@ -267,33 +310,4 @@ chrome.runtime.onSuspend.addListener(() => {
     session.vault.lock().catch(() => { /* best effort */ })
     session = null
   }
-})
-
-// Expose a simple unlock API for the popup (called after passphrase entry)
-// The popup sends a message type not in the union — handled here separately.
-chrome.runtime.onMessage.addListener((message: { type: string; passphrase?: string }, _sender, sendResponse) => {
-  if (message.type !== 'UNLOCK_VAULT') return false
-
-  if (!message.passphrase) { sendResponse({ ok: false, error: 'No passphrase' }); return true }
-
-  loadVaultBlob().then(async blob => {
-    if (!blob) { sendResponse({ ok: false, error: 'No vault found' }); return }
-
-    const { Vault } = await import('../src/vault')
-    const vault = await Vault.open(blob, message.passphrase!)
-
-    // For now the DID keypair must be provided separately or derived from recovery
-    // In the full flow the popup would send the keypair alongside the passphrase
-    session = {
-      vault,
-      ownerDid: vault.owner.did,
-      ownerPrivateKey: new Uint8Array(0),  // placeholder — full flow via popup
-      ownerPublicKey: new Uint8Array(0),
-    }
-    sendResponse({ ok: true })
-  }).catch(err => {
-    sendResponse({ ok: false, error: String(err) })
-  })
-
-  return true
 })

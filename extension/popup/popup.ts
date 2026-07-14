@@ -10,6 +10,7 @@
 
 import type { PopupToBackground, BackgroundToPopup } from '../messages'
 import type { SiteApproval } from '../../src/form-filler'
+import { isSiteApprovalValid } from '../../src/form-filler'
 
 async function send<T extends BackgroundToPopup>(msg: PopupToBackground): Promise<T | null> {
   try {
@@ -36,7 +37,7 @@ const lockBtn = document.getElementById('lock-btn')!
 
 function renderApprovals(approvals: SiteApproval[]) {
   approvalList.innerHTML = ''
-  const valid = approvals.filter(a => !a.expiresAt || new Date(a.expiresAt) > new Date())
+  const valid = approvals.filter(isSiteApprovalValid)
 
   if (valid.length === 0) {
     noApprovals.style.display = 'block'
@@ -97,7 +98,7 @@ async function revokeApproval(id: string) {
 }
 
 async function lockVault() {
-  await chrome.runtime.sendMessage({ type: 'LOCK_VAULT' })
+  await send<BackgroundToPopup>({ type: 'LOCK_VAULT' })
   showLocked()
 }
 
@@ -123,7 +124,7 @@ unlockForm.addEventListener('submit', async e => {
   const passphrase = passphraseInput.value.trim()
   if (!passphrase) return
 
-  const res = await chrome.runtime.sendMessage({ type: 'UNLOCK_VAULT', passphrase }) as { ok: boolean; error?: string } | null
+  const res = await send<BackgroundToPopup>({ type: 'UNLOCK_VAULT', passphrase }) as { type: 'UNLOCK_RESULT'; ok: boolean; error?: string } | null
   if (!res?.ok) {
     errorMsg.textContent = res?.error ?? 'Failed to unlock vault'
     errorMsg.style.display = 'block'

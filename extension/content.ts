@@ -21,25 +21,26 @@ import { FILL_RULES } from '../src/form-filler'
 
 // ── Field detection ───────────────────────────────────────────────────────────
 
+const KNOWN_SELECTORS = FILL_RULES.flatMap(r => r.selectors)
+const KNOWN_AUTOCOMPLETE = new Set(FILL_RULES.flatMap(r => r.autocompleteTokens))
+
 function detectFields(): DetectedField[] {
   const inputs = document.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
     'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]), select'
   )
 
   const found: DetectedField[] = []
-  const knownSelectors = new Set(FILL_RULES.flatMap(r => r.selectors))
-  const knownAutocomplete = new Set(FILL_RULES.flatMap(r => r.autocompleteTokens))
 
   for (const el of inputs) {
     const autocomplete = el.getAttribute('autocomplete')
     const name = el.getAttribute('name')?.toLowerCase() ?? null
     const inputType = el instanceof HTMLInputElement ? (el.type || 'text') : 'select'
 
-    const matchesSelector = [...knownSelectors].some(sel => {
+    const matchesSelector = KNOWN_SELECTORS.some(sel => {
       try { return el.matches(sel) } catch { return false }
     })
     const matchesAutocomplete = autocomplete
-      ? [...knownAutocomplete].some(token => autocomplete.includes(token))
+      ? autocomplete.split(' ').some(token => KNOWN_AUTOCOMPLETE.has(token))
       : false
 
     if (matchesSelector || matchesAutocomplete) {
