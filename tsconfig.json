@@ -12,6 +12,16 @@
     "declarationMap": true,
     "sourceMap": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/generated"]
+  "include": [
+    "src/index.ts",
+    "src/vault.ts",
+    "src/crypto.ts",
+    "src/recovery.ts",
+    "src/did.ts",
+    "src/consent.ts",
+    "src/sharing.ts",
+    "src/audit.ts",
+    "src/form-filler.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
 }
