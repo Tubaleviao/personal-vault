@@ -6,7 +6,7 @@
  * on the shape without a runtime schema library.
  */
 
-import type { FillMap, SiteApproval } from '../src/form-filler'
+import type { FillMap, SiteApproval, CredentialEntry } from '../src/form-filler'
 
 // ── Content → Background ──────────────────────────────────────────────────────
 
@@ -124,6 +124,66 @@ export interface MsgUnlockResult {
   error?: string
 }
 
+// ── Credential messages: Content → Background ─────────────────────────────────
+
+/** Content detected a login form (has a password field). */
+export interface MsgCredentialFormDetected {
+  type: 'CREDENTIAL_FORM_DETECTED'
+  origin: string
+}
+
+/** Content captured username + password from a submitted form. */
+export interface MsgCredentialSubmit {
+  type: 'CREDENTIAL_SUBMIT'
+  origin: string
+  username: string
+  password: string
+}
+
+/** User confirmed saving / updating the credential in the save banner. */
+export interface MsgCredentialSaveConfirmed {
+  type: 'CREDENTIAL_SAVE_CONFIRMED'
+  origin: string
+  username: string
+  password: string
+  /** present = update existing credential, absent = new */
+  existingClaimId?: string
+}
+
+/** User dismissed the save banner without saving. */
+export interface MsgCredentialSaveDenied {
+  type: 'CREDENTIAL_SAVE_DENIED'
+}
+
+/** User picked an account from the fill banner. */
+export interface MsgCredentialFillConfirmed {
+  type: 'CREDENTIAL_FILL_CONFIRMED'
+  claimId: string
+}
+
+// ── Credential messages: Background → Content ─────────────────────────────────
+
+/** Prompt to fill — carries usernames only, never passwords. */
+export interface MsgCredentialFillPrompt {
+  type: 'CREDENTIAL_FILL_PROMPT'
+  credentials: CredentialEntry[]
+}
+
+/** Actual fill data — sent only after user confirms fill. */
+export interface MsgCredentialFillData {
+  type: 'CREDENTIAL_FILL_DATA'
+  username: string
+  password: string
+}
+
+/** Prompt to save a new password or update an existing one. */
+export interface MsgCredentialSavePrompt {
+  type: 'CREDENTIAL_SAVE_PROMPT'
+  username: string
+  /** present = "Update saved password?", absent = "Save password?" */
+  existingClaimId?: string
+}
+
 // ── Union types ───────────────────────────────────────────────────────────────
 
 export type ContentToBackground =
@@ -131,12 +191,20 @@ export type ContentToBackground =
   | MsgRequestFill
   | MsgUserApproved
   | MsgUserDenied
+  | MsgCredentialFormDetected
+  | MsgCredentialSubmit
+  | MsgCredentialSaveConfirmed
+  | MsgCredentialSaveDenied
+  | MsgCredentialFillConfirmed
 
 export type BackgroundToContent =
   | MsgVaultLocked
   | MsgApprovalRequired
   | MsgFillData
   | MsgApprovalRevoked
+  | MsgCredentialFillPrompt
+  | MsgCredentialFillData
+  | MsgCredentialSavePrompt
 
 export type PopupToBackground =
   | MsgListApprovals

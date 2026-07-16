@@ -48,6 +48,8 @@ const sharedConfig = {
 // In the extension we use WebCrypto for hashing and crypto.randomUUID() for IDs.
 const cryptoShim = `
 export const randomUUID = () => crypto.randomUUID()
+export const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n))
+export const scryptSync = () => { throw new Error('scryptSync unavailable in browser') }
 export const createHash = (algo) => {
   const chunks = []
   return {
@@ -70,7 +72,7 @@ export const createHash = (algo) => {
   }
 }
 `
-writeFileSync(join(outdir, '../crypto-shim.js'), cryptoShim)
+writeFileSync('crypto-shim.js', cryptoShim)
 
 const builds = [
   {

@@ -16,7 +16,7 @@ import type {
   ContentToBackground, BackgroundToContent,
   MsgFormDetected, DetectedField,
 } from './messages'
-import type { FillMap } from '../src/form-filler'
+import type { FillMap, CredentialEntry } from '../src/form-filler'
 import { FILL_RULES } from '../src/form-filler'
 
 // ── Field detection ───────────────────────────────────────────────────────────
@@ -160,56 +160,269 @@ function showFillConfirmation(count: number) {
   setTimeout(() => toast.remove(), 2500)
 }
 
+// ── Login form detection ──────────────────────────────────────────────────────
+
+interface LoginForm {
+  passwordEl: HTMLInputElement
+  usernameEl: HTMLInputElement | null
+}
+
+function detectLoginForm(): LoginForm | null {
+  const passwordEl = document.querySelector<HTMLInputElement>('input[type="password"]')
+  if (!passwordEl) return null
+
+  // Prefer explicit autocomplete tokens, then common name patterns, then the nearest preceding text input
+  let usernameEl: HTMLInputElement | null =
+    document.querySelector<HTMLInputElement>('input[type="email"]') ??
+    document.querySelector<HTMLInputElement>('input[autocomplete="username"]') ??
+    document.querySelector<HTMLInputElement>('input[name*="user"]') ??
+    null
+
+  if (!usernameEl) {
+    // Walk backward through all inputs to find the first text-like input before the password field
+    const allInputs = [...document.querySelectorAll<HTMLInputElement>('input')]
+    const pwIdx = allInputs.indexOf(passwordEl)
+    for (let i = pwIdx - 1; i >= 0; i--) {
+      const el = allInputs[i]
+      const t = el.type || 'text'
+      if (t === 'text' || t === 'email' || t === '') {
+        usernameEl = el
+        break
+      }
+    }
+  }
+
+  return { passwordEl, usernameEl }
+}
+
+// ── Credential UI ─────────────────────────────────────────────────────────────
+
+let credentialBanner: HTMLElement | null = null
+
+function showCredentialFillBanner(credentials: CredentialEntry[], loginForm: LoginForm) {
+  if (credentialBanner) credentialBanner.remove()
+
+  const origin = window.location.hostname
+  const banner = document.createElement('div')
+  banner.id = '__pvault_cred_banner'
+  banner.setAttribute('style', [
+    'position:fixed', 'bottom:16px', 'right:16px', 'z-index:2147483647',
+    'background:#1e293b', 'color:#f1f5f9', 'border-radius:8px',
+    'padding:14px 18px', 'font-family:system-ui,sans-serif', 'font-size:13px',
+    'box-shadow:0 4px 24px rgba(0,0,0,.4)', 'max-width:340px', 'line-height:1.5',
+  ].join(';'))
+
+  const header = document.createElement('div')
+  header.setAttribute('style', 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px')
+
+  const title = document.createElement('div')
+  title.innerHTML = `<strong style="color:#7dd3fc">Personal Vault</strong><br><span style="color:#94a3b8;font-size:11px">Fill saved credentials for ${origin}?</span>`
+
+  const btnDismiss = document.createElement('button')
+  btnDismiss.textContent = '✕'
+  btnDismiss.setAttribute('style', 'background:transparent;color:#94a3b8;border:none;cursor:pointer;font-size:14px;padding:4px')
+  btnDismiss.onclick = () => banner.remove()
+
+  header.appendChild(title)
+  header.appendChild(btnDismiss)
+  banner.appendChild(header)
+
+  for (const cred of credentials) {
+    const row = document.createElement('div')
+    row.setAttribute('style', 'display:flex;justify-content:space-between;align-items:center;margin-top:6px')
+
+    const label = document.createElement('span')
+    label.textContent = cred.username
+    label.setAttribute('style', 'font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px')
+
+    const btnFill = document.createElement('button')
+    btnFill.textContent = 'Fill'
+    btnFill.setAttribute('style', 'background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:12px;flex-shrink:0')
+    btnFill.onclick = async () => {
+      banner.remove()
+      const resp = await chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
+        type: 'CREDENTIAL_FILL_CONFIRMED',
+        claimId: cred.claimId,
+      })
+      if (resp?.type === 'CREDENTIAL_FILL_DATA') {
+        applyCredentialFill(resp.username, resp.password, loginForm)
+      }
+    }
+
+    row.appendChild(label)
+    row.appendChild(btnFill)
+    banner.appendChild(row)
+  }
+
+  document.body.appendChild(banner)
+  credentialBanner = banner
+}
+
+function showCredentialSaveBanner(
+  username: string,
+  origin: string,
+  password: string,
+  existingClaimId: string | undefined,
+) {
+  if (credentialBanner) credentialBanner.remove()
+
+  const hostname = new URL(origin).hostname
+  const isUpdate = existingClaimId !== undefined
+  const banner = document.createElement('div')
+  banner.id = '__pvault_cred_save_banner'
+  banner.setAttribute('style', [
+    'position:fixed', 'bottom:16px', 'right:16px', 'z-index:2147483647',
+    'background:#1e293b', 'color:#f1f5f9', 'border-radius:8px',
+    'padding:14px 18px', 'font-family:system-ui,sans-serif', 'font-size:13px',
+    'box-shadow:0 4px 24px rgba(0,0,0,.4)', 'max-width:340px', 'line-height:1.5',
+  ].join(';'))
+
+  const header = document.createElement('div')
+  header.setAttribute('style', 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px')
+
+  const title = document.createElement('div')
+  const action = isUpdate ? 'Update saved password' : 'Save password'
+  title.innerHTML = `<strong style="color:#7dd3fc">Personal Vault</strong><br>${action} for ${hostname}?<br><span style="color:#94a3b8;font-size:11px">${username}</span>`
+
+  const btnDismiss = document.createElement('button')
+  btnDismiss.textContent = '✕'
+  btnDismiss.setAttribute('style', 'background:transparent;color:#94a3b8;border:none;cursor:pointer;font-size:14px;padding:4px')
+  btnDismiss.onclick = () => {
+    banner.remove()
+    chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({ type: 'CREDENTIAL_SAVE_DENIED' }).catch(() => { /* ignore */ })
+  }
+
+  header.appendChild(title)
+  header.appendChild(btnDismiss)
+  banner.appendChild(header)
+
+  const row = document.createElement('div')
+  row.setAttribute('style', 'display:flex;gap:8px;margin-top:10px')
+
+  const btnSave = document.createElement('button')
+  btnSave.textContent = isUpdate ? 'Update' : 'Save'
+  btnSave.setAttribute('style', 'flex:1;background:#16a34a;color:#fff;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px')
+  btnSave.onclick = () => {
+    banner.remove()
+    chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
+      type: 'CREDENTIAL_SAVE_CONFIRMED',
+      origin,
+      username,
+      password,
+      existingClaimId,
+    }).catch(() => { /* ignore */ })
+  }
+
+  const btnNotNow = document.createElement('button')
+  btnNotNow.textContent = 'Not now'
+  btnNotNow.setAttribute('style', 'flex:1;background:#334155;color:#f1f5f9;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px')
+  btnNotNow.onclick = () => {
+    banner.remove()
+    chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({ type: 'CREDENTIAL_SAVE_DENIED' }).catch(() => { /* ignore */ })
+  }
+
+  row.appendChild(btnSave)
+  row.appendChild(btnNotNow)
+  banner.appendChild(row)
+  document.body.appendChild(banner)
+  credentialBanner = banner
+}
+
+function applyCredentialFill(username: string, password: string, loginForm: LoginForm) {
+  const { usernameEl, passwordEl } = loginForm
+  if (usernameEl) {
+    usernameEl.value = username
+    usernameEl.dispatchEvent(new Event('input', { bubbles: true }))
+    usernameEl.dispatchEvent(new Event('change', { bubbles: true }))
+  }
+  passwordEl.value = password
+  passwordEl.dispatchEvent(new Event('input', { bubbles: true }))
+  passwordEl.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
 // ── Main logic ────────────────────────────────────────────────────────────────
 
-async function main() {
-  const fields = detectFields()
-  if (fields.length === 0) return
+// Holds the detected login form so submit handler can reference the elements
+let activeLoginForm: LoginForm | null = null
 
+async function main() {
   const origin = window.location.origin
 
-  const msg: MsgFormDetected = { type: 'FORM_DETECTED', origin, detectedFields: fields }
-  const response = await chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>(msg)
+  // ── Identity field filling ────────────────────────────────────────────────
 
-  if (!response) return
+  const fields = detectFields()
+  if (fields.length > 0) {
+    const msg: MsgFormDetected = { type: 'FORM_DETECTED', origin, detectedFields: fields }
+    const response = await chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>(msg)
 
-  if (response.type === 'VAULT_LOCKED') {
-    // Don't bother the user — extension badge shows lock state
-    return
-  }
-
-  if (response.type === 'APPROVAL_REQUIRED') {
-    showApprovalPrompt(
-      response.availableClaimTypes,
-      (types, persist) => {
-        chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
-          type: 'USER_APPROVED', origin, claimTypes: types, persist,
-        }).then(r => {
-          if (r?.type === 'FILL_DATA') {
-            const count = applyFillMap(r.fillMap)
-            if (count > 0) showFillConfirmation(count)
+    if (response) {
+      if (response.type === 'APPROVAL_REQUIRED') {
+        showApprovalPrompt(
+          response.availableClaimTypes,
+          (types, persist) => {
+            chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
+              type: 'USER_APPROVED', origin, claimTypes: types, persist,
+            }).then(r => {
+              if (r?.type === 'FILL_DATA') {
+                const count = applyFillMap(r.fillMap)
+                if (count > 0) showFillConfirmation(count)
+              }
+            }).catch(() => { /* vault locked between approval and fill */ })
+          },
+          () => {
+            chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({ type: 'USER_DENIED', origin })
+              .catch(() => { /* ignore */ })
           }
-        }).catch(() => { /* vault locked between approval and fill */ })
-      },
-      () => {
-        chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({ type: 'USER_DENIED', origin })
-          .catch(() => { /* ignore */ })
+        )
+      } else if (response.type === 'FILL_DATA') {
+        const count = applyFillMap(response.fillMap)
+        if (count > 0) showFillConfirmation(count)
       }
-    )
-    return
+      // VAULT_LOCKED and APPROVAL_REVOKED: silently skip
+    }
   }
 
-  if (response.type === 'FILL_DATA') {
-    const count = applyFillMap(response.fillMap)
-    if (count > 0) showFillConfirmation(count)
-    return
-  }
+  // ── Credential fill detection ─────────────────────────────────────────────
 
-  if (response.type === 'APPROVAL_REVOKED') {
-    // Silently skip — user previously revoked access for this site
-    return
+  const loginForm = detectLoginForm()
+  if (loginForm) {
+    activeLoginForm = loginForm
+    const credResp = await chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
+      type: 'CREDENTIAL_FORM_DETECTED',
+      origin,
+    })
+    if (credResp?.type === 'CREDENTIAL_FILL_PROMPT') {
+      showCredentialFillBanner(credResp.credentials, loginForm)
+    }
   }
 }
+
+// ── Submit interception (credential save) ─────────────────────────────────────
+
+document.addEventListener('submit', (event: Event) => {
+  const form = event.target as HTMLFormElement | null
+  if (!form || !activeLoginForm) return
+
+  const { passwordEl, usernameEl } = activeLoginForm
+  // Only intercept if the submitted form contains the detected password field
+  if (!form.contains(passwordEl)) return
+
+  const password = passwordEl.value
+  const username = usernameEl?.value ?? ''
+  if (!password) return
+
+  const origin = window.location.origin
+  chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
+    type: 'CREDENTIAL_SUBMIT',
+    origin,
+    username,
+    password,
+  }).then(resp => {
+    if (resp?.type === 'CREDENTIAL_SAVE_PROMPT') {
+      showCredentialSaveBanner(resp.username, origin, password, resp.existingClaimId)
+    }
+  }).catch(() => { /* ignore */ })
+}, { capture: true })
 
 // Run once at document_idle; re-run if the DOM mutates significantly (SPAs).
 main().catch(() => { /* extension context may be unavailable */ })
@@ -219,8 +432,9 @@ new MutationObserver(() => {
   if (mutationDebounce) return
   mutationDebounce = setTimeout(() => {
     mutationDebounce = null
-    const fields = detectFields()
-    if (fields.length > 0 && !document.getElementById('__pvault_banner')) {
+    const hasIdentityBanner = !!document.getElementById('__pvault_banner')
+    const hasCredentialBanner = !!document.getElementById('__pvault_cred_banner') || !!document.getElementById('__pvault_cred_save_banner')
+    if (!hasIdentityBanner && !hasCredentialBanner) {
       main().catch(() => { /* ignore */ })
     }
   }, 1500)

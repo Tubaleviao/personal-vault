@@ -30,7 +30,9 @@ import type {
 import type { SiteApproval } from '../src/form-filler'
 import {
   buildFillMap, buildSiteApproval, isSiteApprovalValid, FILL_RULES,
+  findCredentialsForOrigin, getCredentialById, CREDENTIAL_CLAIM_TYPE,
 } from '../src/form-filler'
+import type { CredentialValue } from '../src/form-filler'
 import type { Vault, PersistedVault } from '../src/vault'
 
 // ── In-memory vault session ───────────────────────────────────────────────────
@@ -281,6 +283,74 @@ async function handleMessage(
 
   if (message.type === 'USER_DENIED') {
     // No action needed — we simply don't store an approval
+    sendResponse(null)
+    return
+  }
+
+  // ── Credential messages ────────────────────────────────────────────────────
+
+  if (message.type === 'CREDENTIAL_FORM_DETECTED') {
+    if (!session) { sendResponse({ type: 'VAULT_LOCKED' }); return }
+    const claims = session.vault.listClaims()
+    const entries = findCredentialsForOrigin(claims, message.origin)
+    if (entries.length === 0) { sendResponse(null); return }
+    sendResponse({ type: 'CREDENTIAL_FILL_PROMPT', credentials: entries })
+    return
+  }
+
+  if (message.type === 'CREDENTIAL_FILL_CONFIRMED') {
+    if (!session) { sendResponse({ type: 'VAULT_LOCKED' }); return }
+    const cred = getCredentialById(session.vault.listClaims(), message.claimId)
+    if (!cred) { sendResponse(null); return }
+    sendResponse({ type: 'CREDENTIAL_FILL_DATA', username: cred.username, password: cred.password })
+    return
+  }
+
+  if (message.type === 'CREDENTIAL_SUBMIT') {
+    if (!session) { sendResponse({ type: 'VAULT_LOCKED' }); return }
+    const claims = session.vault.listClaims()
+    const existing = findCredentialsForOrigin(claims, message.origin)
+      .find(e => e.username === message.username)
+
+    if (existing) {
+      const existingClaim = session.vault.getClaim(existing.claimId)
+      const existingValue = existingClaim.value as CredentialValue
+      if (existingValue.password === message.password) { sendResponse(null); return }
+      sendResponse({ type: 'CREDENTIAL_SAVE_PROMPT', username: message.username, existingClaimId: existing.claimId })
+    } else {
+      sendResponse({ type: 'CREDENTIAL_SAVE_PROMPT', username: message.username })
+    }
+    return
+  }
+
+  if (message.type === 'CREDENTIAL_SAVE_CONFIRMED') {
+    if (!session) { sendResponse({ type: 'VAULT_LOCKED' }); return }
+    const value: CredentialValue = {
+      origin: message.origin,
+      username: message.username,
+      password: message.password,
+    }
+
+    if (message.existingClaimId) {
+      session.vault.updateClaim(message.existingClaimId, { value })
+    } else {
+      session.vault.addClaim({
+        type: CREDENTIAL_CLAIM_TYPE,
+        value,
+        source: 'self-attested',
+        verification: 'none',
+        expiresAt: null,
+        issuerDid: null,
+      })
+    }
+
+    const blob = await session.vault.seal()
+    await chrome.storage.local.set({ vault: blob })
+    sendResponse(null)
+    return
+  }
+
+  if (message.type === 'CREDENTIAL_SAVE_DENIED') {
     sendResponse(null)
     return
   }
