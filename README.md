@@ -75,45 +75,40 @@ The key difference: password managers store and replay credentials on your behal
 
 ## Installation
 
-### Prerequisites
-
-- Node.js 20 or later
-- npm
-
-### Clone and install
+Node.js 20 or later required.
 
 ```bash
-git clone https://github.com/your-username/personal-vault.git
-cd personal-vault
-npm install
+npm install personal-vault
 ```
-
-No build step is needed for day-to-day use — source files are run directly with `tsx`.
 
 ---
 
 ## Usage
 
-All modules are imported directly from `src/`. Use the following pattern to run any script:
+Everything is exported from the top-level package:
 
-```bash
-node -r ./node_modules/tsx/dist/cjs/index.cjs <your-script.ts>
+```typescript
+import { Vault, generateDID, createGrant, validateGrant, /* ... */ } from 'personal-vault'
 ```
 
 ### Create and unlock a vault
 
 ```typescript
-import { Vault } from './src/vault'
+import { Vault } from 'personal-vault'
+import fs from 'fs'
 
 // Create a new vault
 const vault = await Vault.create('my-strong-passphrase')
 
+// Persist the encrypted blob
+fs.writeFileSync('vault.bin', vault.seal())
+
 // Open an existing vault
 const blob = fs.readFileSync('vault.bin')
-const vault = await Vault.open(blob, 'my-strong-passphrase')
+const vault2 = await Vault.open(blob, 'my-strong-passphrase')
 
 // Lock the vault — zeroes the master key from memory
-vault.lock()
+vault2.lock()
 ```
 
 ### Store and read claims
@@ -123,7 +118,7 @@ vault.lock()
 await vault.addClaim({
   type: 'email',
   value: 'alice@example.com',
-  source: 'self_attested',
+  source: 'self-attested',
 })
 
 // Read all claims
@@ -136,7 +131,7 @@ await vault.deleteClaim(claimId)
 ### Generate a DID identity
 
 ```typescript
-import { generateDID } from './src/did'
+import { generateDID } from 'personal-vault'
 
 const { did, privateKey, publicKey } = await generateDID()
 // did:key:z6Mk...
@@ -145,10 +140,10 @@ const { did, privateKey, publicKey } = await generateDID()
 ### Create and validate a grant
 
 ```typescript
-import { createGrant, validateGrant } from './src/consent'
+import { createGrant, validateGrant } from 'personal-vault'
 
 // Grant an app access to specific claims
-const grant = await createGrant({
+const { grant } = await createGrant({
   ownerDID: did,
   privateKey,
   appId: 'com.example.app',
@@ -157,25 +152,25 @@ const grant = await createGrant({
 })
 
 // Validate the grant before serving data
-const result = await validateGrant(grant, vault)
+const result = await validateGrant(grant, did)
 ```
 
 ### Revoke a grant
 
 ```typescript
-import { revokeGrant } from './src/consent'
+import { revokeGrant } from 'personal-vault'
 
-await revokeGrant(vault, grantId)
-// Any future validateGrant() call for this grant now fails
+revokeGrant(vault, grantId)
+// Any future validateGrant() call for this grant now returns { valid: false }
 ```
 
 ### Share an encrypted bundle
 
 ```typescript
-import { createBundle, verifyBundle } from './src/sharing'
+import { createBundle, verifyBundle } from 'personal-vault'
 
 // Sender: create a signed encrypted bundle
-const { token } = await createBundle({
+const { bundle } = await createBundle({
   claims,
   ownerDID: did,
   privateKey,
@@ -184,13 +179,13 @@ const { token } = await createBundle({
 })
 
 // Recipient: verify and decrypt
-const result = await verifyBundle(token, senderDID, recipientPrivateKey)
+const result = await verifyBundle(bundle, did, recipientPrivateKey)
 ```
 
 ### Generate a recovery phrase
 
 ```typescript
-import { generateMnemonicBundle } from './src/recovery'
+import { generateMnemonicBundle } from 'personal-vault'
 
 const { mnemonic, did, privateKey } = await generateMnemonicBundle()
 // Store mnemonic offline — it is never saved to disk by this library
@@ -199,9 +194,9 @@ const { mnemonic, did, privateKey } = await generateMnemonicBundle()
 ### Inspect the audit log
 
 ```typescript
-import { verifyChain, formatAuditLog } from './src/audit'
+import { verifyChain, formatAuditLog } from 'personal-vault'
 
-const entries = await vault.getAuditLog()
+const entries = vault.getAuditLog()
 
 // Detect tampering
 const { valid, firstBadIndex } = verifyChain(entries)
@@ -212,9 +207,12 @@ console.log(formatAuditLog(entries))
 
 ### Browser extension
 
-Build the extension bundle and load it into Chrome:
+The package ships `form-filler` utilities used by the Chrome extension. To build and load the extension from source:
 
 ```bash
+git clone https://github.com/your-username/personal-vault.git
+cd personal-vault
+npm install
 # Build once
 node extension/build.mjs
 
@@ -229,20 +227,6 @@ Once loaded:
 2. Navigate to any page with a form — an approval banner appears listing matched claim types.
 3. Choose **Fill once** or **Always allow**. The vault fills the matching fields.
 4. Manage or revoke site approvals from the popup at any time.
-
-### Schema commands
-
-After editing `src/fabric.ts`, regenerate all artifacts:
-
-```bash
-npm run validate      # check schema for errors — no files written
-npm run inspect       # print the full IR as JSON
-npm run generate      # regenerate all artifacts in src/generated/
-npm run diff          # show what would change without writing files
-npm run check-drift   # warn if any generated file was manually edited
-```
-
-`src/generated/` is committed. Always run `npm run generate` after changing `fabric.ts` and commit the updated generated files in the same commit.
 
 ---
 

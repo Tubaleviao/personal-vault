@@ -8,10 +8,7 @@
  */
 
 import sodium = require('libsodium-wrappers')
-import { scrypt as scryptCb, createHash, randomBytes } from 'crypto'
-import { promisify } from 'util'
-
-const scrypt = promisify(scryptCb)
+import { scryptSync, createHash, randomBytes } from 'crypto'
 
 // scrypt parameters — 2^14 is the minimum for reasonable security;
 // production clients should use 2^16 or higher once confirmed working
@@ -41,9 +38,9 @@ async function ensureSodium(): Promise<typeof sodium> {
  * The salt must be stored alongside the encrypted vault (not secret).
  */
 export async function deriveKey(passphrase: string, salt: Uint8Array): Promise<Uint8Array> {
-  const keyBuf = await scrypt(passphrase, salt, SCRYPT_KEY_LEN, {
+  const keyBuf = scryptSync(passphrase, salt, SCRYPT_KEY_LEN, {
     N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P,
-  }) as Buffer
+  })
   return new Uint8Array(keyBuf)
 }
 

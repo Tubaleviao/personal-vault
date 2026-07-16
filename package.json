@@ -1,16 +1,38 @@
 {
   "name": "personal-vault",
   "version": "0.1.0",
-  "private": true,
   "description": "User-owned personal data vault with granular, revocable, auditable consent",
   "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build":       "tsc",
     "validate":    "quoin validate    -s ./src/fabric.ts",
     "inspect":     "quoin inspect     -s ./src/fabric.ts",
     "generate":    "quoin generate    -c ./newel.config.ts",
     "diff":        "quoin diff        -c ./newel.config.ts",
     "check-drift": "quoin check-drift -c ./newel.config.ts"
   },
+  "keywords": [
+    "personal-data",
+    "vault",
+    "identity",
+    "did",
+    "verifiable-credentials",
+    "consent",
+    "privacy",
+    "encryption"
+  ],
+  "license": "MIT",
   "dependencies": {
     "@newel/core": "^0.0.1",
     "@newel/generator-typescript": "^0.0.1",
