@@ -27,11 +27,16 @@ const didShort = document.getElementById('did-short')!
 const lockedView = document.getElementById('locked-view')!
 const unlockedView = document.getElementById('unlocked-view')!
 const passphraseInput = document.getElementById('passphrase') as HTMLInputElement
+const mnemonicInput = document.getElementById('mnemonic-input') as HTMLInputElement
 const unlockForm = document.getElementById('unlock-form') as HTMLFormElement
 const errorMsg = document.getElementById('error-msg')!
 const approvalList = document.getElementById('approval-list')!
 const noApprovals = document.getElementById('no-approvals')!
 const lockBtn = document.getElementById('lock-btn')!
+const relayUrlInput = document.getElementById('relay-url') as HTMLInputElement
+const saveRelayBtn = document.getElementById('save-relay-btn')!
+const syncBtn = document.getElementById('sync-btn')!
+const syncStatus = document.getElementById('sync-status')!
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +80,17 @@ function renderApprovals(approvals: SiteApproval[]) {
   }
 }
 
+function renderSyncStatus(relayUrl: string, lastSyncedAt: string | null) {
+  relayUrlInput.value = relayUrl
+  if (!relayUrl) {
+    syncStatus.textContent = 'Enter a relay URL to enable sync.'
+    return
+  }
+  syncStatus.textContent = lastSyncedAt
+    ? `Last synced: ${new Date(lastSyncedAt).toLocaleString()}`
+    : 'Never synced.'
+}
+
 function showUnlocked(ownerDid: string, approvals: SiteApproval[]) {
   statusDot.classList.add('unlocked')
   didShort.textContent = ownerDid.slice(-8)
@@ -102,6 +118,39 @@ async function lockVault() {
   showLocked()
 }
 
+async function saveRelayUrl() {
+  const url = relayUrlInput.value.trim()
+  const res = await send<BackgroundToPopup>({ type: 'SET_RELAY_CONFIG', relayUrl: url }) as { type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null
+  if (res) renderSyncStatus(res.relayUrl, res.lastSyncedAt)
+}
+
+async function syncNow() {
+  syncBtn.textContent = 'Syncing…'
+  syncBtn.setAttribute('disabled', 'true')
+  syncStatus.textContent = ''
+
+  const res = await send<BackgroundToPopup>({ type: 'SYNC_VAULT' }) as { type: 'SYNC_RESULT'; ok: boolean; action?: string; syncedAt?: string; error?: string } | null
+
+  syncBtn.textContent = 'Sync now'
+  syncBtn.removeAttribute('disabled')
+
+  if (!res || !res.ok) {
+    syncStatus.textContent = `Error: ${res?.error ?? 'Unknown error'}`
+    syncStatus.style.color = '#f87171'
+    return
+  }
+
+  syncStatus.style.color = '#22c55e'
+  const actionLabel: Record<string, string> = {
+    'pushed': 'Pushed to relay',
+    'pulled': 'Pulled from relay — unlock again to load',
+    'already-current': 'Already up to date',
+    'first-push': 'Registered and pushed',
+  }
+  syncStatus.textContent = (res.action ? actionLabel[res.action] ?? res.action : 'Done') +
+    (res.syncedAt ? ` · ${new Date(res.syncedAt).toLocaleTimeString()}` : '')
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -112,8 +161,13 @@ async function init() {
     return
   }
 
-  const approvalsRes = await send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as { type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null
+  const [approvalsRes, relayRes] = await Promise.all([
+    send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
+    send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
+  ])
+
   showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [])
+  if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -123,8 +177,9 @@ unlockForm.addEventListener('submit', async e => {
   errorMsg.style.display = 'none'
   const passphrase = passphraseInput.value.trim()
   if (!passphrase) return
+  const mnemonic = mnemonicInput.value.trim() || undefined
 
-  const res = await send<BackgroundToPopup>({ type: 'UNLOCK_VAULT', passphrase }) as { type: 'UNLOCK_RESULT'; ok: boolean; error?: string } | null
+  const res = await send<BackgroundToPopup>({ type: 'UNLOCK_VAULT', passphrase, mnemonic }) as { type: 'UNLOCK_RESULT'; ok: boolean; error?: string } | null
   if (!res?.ok) {
     errorMsg.textContent = res?.error ?? 'Failed to unlock vault'
     errorMsg.style.display = 'block'
@@ -133,9 +188,12 @@ unlockForm.addEventListener('submit', async e => {
   }
 
   passphraseInput.value = ''
+  mnemonicInput.value = ''
   await init()
 })
 
 lockBtn.addEventListener('click', lockVault)
+saveRelayBtn.addEventListener('click', saveRelayUrl)
+syncBtn.addEventListener('click', syncNow)
 
 init().catch(() => showLocked())

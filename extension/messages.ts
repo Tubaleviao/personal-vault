@@ -75,6 +75,40 @@ export interface MsgUserDenied {
   origin: string
 }
 
+// ── Popup → Background (sync) ─────────────────────────────────────────────────
+
+/** Popup reads the current relay configuration. */
+export interface MsgGetRelayConfig {
+  type: 'GET_RELAY_CONFIG'
+}
+
+/** Popup saves a relay URL (empty string = disable sync). */
+export interface MsgSetRelayConfig {
+  type: 'SET_RELAY_CONFIG'
+  relayUrl: string
+}
+
+/** Popup triggers a manual sync (push or pull). */
+export interface MsgSyncVault {
+  type: 'SYNC_VAULT'
+}
+
+// ── Background → Popup (sync) ─────────────────────────────────────────────────
+
+export interface MsgRelayConfig {
+  type: 'RELAY_CONFIG'
+  relayUrl: string
+  lastSyncedAt: string | null
+}
+
+export interface MsgSyncResult {
+  type: 'SYNC_RESULT'
+  ok: boolean
+  action?: 'pushed' | 'pulled' | 'already-current' | 'first-push'
+  syncedAt?: string
+  error?: string
+}
+
 // ── Popup → Background ────────────────────────────────────────────────────────
 
 /** Popup requests the list of current site approvals. */
@@ -97,6 +131,8 @@ export interface MsgGetVaultStatus {
 export interface MsgUnlockVault {
   type: 'UNLOCK_VAULT'
   passphrase: string
+  /** Optional: supply the BIP-39 mnemonic to also unlock the signing keypair (needed for sync). */
+  mnemonic?: string
 }
 
 /** Popup asks the background to lock the vault and clear the in-memory session. */
@@ -212,8 +248,13 @@ export type PopupToBackground =
   | MsgGetVaultStatus
   | MsgUnlockVault
   | MsgLockVault
+  | MsgGetRelayConfig
+  | MsgSetRelayConfig
+  | MsgSyncVault
 
 export type BackgroundToPopup =
   | MsgApprovalsListResult
   | MsgVaultStatus
   | MsgUnlockResult
+  | MsgRelayConfig
+  | MsgSyncResult
