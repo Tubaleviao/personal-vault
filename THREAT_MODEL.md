@@ -75,7 +75,8 @@
 |--------|-------|------------|--------|
 | Attacker floods relay with challenge requests | Relay | Nonces are single-use and short-lived (60 s TTL); Cloudflare Workers rate limiting can be layered on | ✅ Partial (CF rate limit layer not configured) |
 | Attacker pushes extremely large blob to relay | Relay | Worker enforces 1 MB body limit | ✅ Implemented |
-| Slow scrypt exhausts CPU on open | Client | scrypt N is a fixed parameter — cannot be externally influenced | ✅ Implemented |
+| Slow scrypt exhausts CPU on open | Client | `scryptN` comes from `VaultHeader`; `Vault.open` and `deriveKey` enforce `SCRYPT_N_MIN` (16384) ≤ N ≤ `SCRYPT_N_MAX` (2^20), rejecting crafted headers before any allocation | ✅ Implemented |
+| Attacker sets `scryptN: 1` in relay-stored header to weaken KDF | Relay / Client | `Vault.open` checks `N >= SCRYPT_N_MIN` and throws before calling `deriveKey`; `deriveKey` independently validates the range | ✅ Implemented |
 
 ### E — Elevation of Privilege
 
@@ -95,7 +96,7 @@
 | VC proof not verified in `importVC()` | Medium | Claims imported from VCs are tagged `source: 'issuer-signed'` and `verification: 'verified'` without actual cryptographic proof check. An attacker who can feed a malicious VC gains a falsely-verified claim. Fix: implement Ed25519/secp256k1 proof verification per W3C VC Data Model. |
 | SD-JWT is a stub | Medium | `frameSDJWT()` produces a non-standard payload; recipients cannot verify it against the SD-JWT draft spec. Risk is limited to push-sharing consumers who expect SD-JWT. Fix: implement full SD-JWT spec conformance (hash disclosures, `_sd` array). |
 | Cloudflare Worker rate limiting not configured | Low | The relay has no per-IP request cap beyond Cloudflare's default abuse protection. A determined attacker could hammer the challenge endpoint. Mitigation: add `wrangler` rate limiting rule or a KV-based counter. |
-| scrypt N stored in VaultHeader (client-controlled) | Low | A modified client could write `scryptN: 1` to weaken KDF on next seal. Mitigation: add a minimum N floor (`>= 16384`) in `Vault.open()` that refuses to open vaults with N below the floor. |
+| scrypt N stored in VaultHeader (client-controlled) | Low | ~~Mitigated~~: `Vault.open()` enforces `scryptN >= SCRYPT_N_MIN` (16384) and `<= SCRYPT_N_MAX` (2^20) before calling `deriveKey`; `deriveKey` independently validates the range. Crafted headers outside this band are rejected before any memory allocation. |
 | No external cryptographic audit | High | All crypto primitives are off-the-shelf (libsodium, Node built-ins), but the protocol composition (key derivation, grant signing, bundle format) has not been reviewed by an independent cryptographer. Plan: fund via NLnet/NGI grant before public launch. |
 
 ---

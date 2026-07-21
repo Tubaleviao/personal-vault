@@ -15,7 +15,7 @@ import { randomUUID, createHash } from 'crypto'
 import {
   deriveKey, generateSalt, keyVerificationHash,
   encryptString, decryptString,
-  zeroKey, SCRYPT_N_DEFAULT, SCRYPT_N_V1,
+  zeroKey, SCRYPT_N_DEFAULT, SCRYPT_N_V1, SCRYPT_N_MIN,
 } from './crypto'
 import type { EncryptedBlob } from './crypto'
 
@@ -165,8 +165,12 @@ export class Vault {
 
   static async open(persisted: PersistedVault, passphrase: string): Promise<Vault> {
     const salt = Buffer.from(persisted.header.salt, 'base64url')
-    // Fall back to legacy N for vaults created before scryptN was stored in the header
+    // Fall back to legacy N for vaults created before scryptN was stored in the header.
+    // deriveKey enforces SCRYPT_N_MIN <= N <= SCRYPT_N_MAX, rejecting crafted headers.
     const N = persisted.header.scryptN ?? SCRYPT_N_V1
+    if (N < SCRYPT_N_MIN) {
+      throw new Error(`Vault header scryptN=${N} is below the minimum (${SCRYPT_N_MIN}); refusing to open`)
+    }
     const masterKey = await deriveKey(passphrase, new Uint8Array(salt), N)
 
     const derivedHash = keyVerificationHash(masterKey)
@@ -319,9 +323,19 @@ export class Vault {
     const createdAt = new Date().toISOString()
     const ownerId = this._state.owner.id
 
-    const canonical = JSON.stringify({ id, ownerId, grantId, action, actor, detail, prevHash, createdAt })
+    const canonical = JSON.stringify(sortKeys({ id, ownerId, grantId, action, actor, detail, prevHash, createdAt }))
     const entryHash = createHash('sha256').update(canonical, 'utf8').digest('hex')
 
     log.push({ id, ownerId, grantId, action, actor, detail, prevHash, entryHash, createdAt })
   }
+}
+
+function sortKeys(val: unknown): unknown {
+  if (val === null || typeof val !== 'object') return val
+  if (Array.isArray(val)) return val.map(sortKeys)
+  const sorted: Record<string, unknown> = {}
+  for (const k of Object.keys(val as object).sort()) {
+    sorted[k] = sortKeys((val as Record<string, unknown>)[k])
+  }
+  return sorted
 }

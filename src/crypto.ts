@@ -13,6 +13,8 @@ import { scryptSync, createHash, randomBytes } from 'crypto'
 // scrypt parameters — 2^16 for new vaults; old vaults sealed with 2^14 pass N explicitly
 export const SCRYPT_N_V1 = 16384  // 2^14 — legacy, stored in VaultHeader.scryptN
 export const SCRYPT_N_DEFAULT = 65536  // 2^16 — used for all new vaults
+export const SCRYPT_N_MIN = 16384  // floor: reject any header-supplied N below this
+export const SCRYPT_N_MAX = 1048576  // ceiling (2^20): prevent OOM DoS from crafted headers
 const SCRYPT_R = 8
 const SCRYPT_P = 1
 const SCRYPT_KEY_LEN = 32  // 256-bit output → used as the vault master key
@@ -39,6 +41,9 @@ async function ensureSodium(): Promise<typeof sodium> {
  * The salt must be stored alongside the encrypted vault (not secret).
  */
 export async function deriveKey(passphrase: string, salt: Uint8Array, N = SCRYPT_N_DEFAULT): Promise<Uint8Array> {
+  if (!Number.isInteger(N) || N < SCRYPT_N_MIN || N > SCRYPT_N_MAX) {
+    throw new Error(`Invalid scrypt N=${N}: must be an integer in [${SCRYPT_N_MIN}, ${SCRYPT_N_MAX}]`)
+  }
   // maxmem must be set explicitly — Node's default (32 MB) is too low for N=2^16 (needs 64 MB)
   const maxmem = 128 * N * SCRYPT_R * SCRYPT_P * 2
   const keyBuf = scryptSync(passphrase, salt, SCRYPT_KEY_LEN, {
