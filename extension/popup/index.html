@@ -79,6 +79,7 @@
     <h2>Unlock Vault</h2>
     <form id="unlock-form" autocomplete="off">
       <input type="password" id="passphrase" placeholder="Passphrase" autofocus>
+      <input type="password" id="mnemonic-input" placeholder="Recovery phrase (optional — needed for sync)">
       <div id="error-msg"></div>
       <button type="submit" class="btn-primary">Unlock</button>
     </form>
@@ -89,7 +90,18 @@
     <h2>Approved Sites</h2>
     <ul id="approval-list" class="approval-list"></ul>
     <div id="no-approvals">No sites approved yet.</div>
-    <button id="lock-btn" class="btn-danger">Lock vault</button>
+
+    <h2 style="margin-top:14px">Sync</h2>
+    <div id="sync-section" style="display:flex;flex-direction:column;gap:6px">
+      <input type="url" id="relay-url" placeholder="https://your-relay.workers.dev" style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:7px 10px;width:100%;outline:none">
+      <div style="display:flex;gap:6px">
+        <button id="save-relay-btn" class="btn-primary" style="flex:1">Save URL</button>
+        <button id="sync-btn" class="btn-primary" style="flex:1">Sync now</button>
+      </div>
+      <div id="sync-status" style="font-size:11px;color:#64748b;min-height:16px"></div>
+    </div>
+
+    <button id="lock-btn" class="btn-danger" style="margin-top:14px;width:100%">Lock vault</button>
   </section>
 
   <script src="popup.js"></script>

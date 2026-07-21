@@ -95,6 +95,7 @@ export interface VaultHeader {
   salt: string            // base64url-encoded 32-byte random salt
   keyVerificationHash: string
   mnemonicCommitment: string  // SHA-256 hex of the BIP-39 mnemonic
+  sequenceNumber: number  // increments on every seal(); used by relay to pick the newer copy
 }
 
 // ── Persisted vault file structure ───────────────────────────────────────────
@@ -138,6 +139,7 @@ export class Vault {
       salt: saltB64,
       keyVerificationHash: keyHash,
       mnemonicCommitment: options.mnemonicCommitment,
+      sequenceNumber: 0,
     }
 
     const state: VaultState = {
@@ -182,9 +184,10 @@ export class Vault {
   /** Encrypt and serialize the vault to a storable object. */
   async seal(): Promise<PersistedVault> {
     this._assertUnlocked()
+    this._header.sequenceNumber = (this._header.sequenceNumber ?? 0) + 1
+    this._appendAudit('vault-locked', 'owner', null, null)
     const plaintext = JSON.stringify(this._state)
     const encrypted = await encryptString(plaintext, this._masterKey)
-    this._appendAudit('vault-locked', 'owner', null, null)
     return { header: this._header, encrypted }
   }
 

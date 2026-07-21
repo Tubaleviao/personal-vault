@@ -34,6 +34,7 @@ import {
 } from '../src/form-filler'
 import type { CredentialValue } from '../src/form-filler'
 import type { Vault, PersistedVault } from '../src/vault'
+import type { RelayConfig } from '../src/relay'
 
 // ── In-memory vault session ───────────────────────────────────────────────────
 
@@ -60,6 +61,22 @@ async function saveApprovals(approvals: SiteApproval[]): Promise<void> {
 async function loadVaultBlob(): Promise<PersistedVault | null> {
   const result = await chrome.storage.local.get('vault')
   return (result['vault'] as PersistedVault | undefined) ?? null
+}
+
+// ── Relay config helpers ──────────────────────────────────────────────────────
+
+interface RelayStorage {
+  relayUrl: string
+  lastSyncedAt: string | null
+}
+
+async function loadRelayConfig(): Promise<RelayStorage> {
+  const result = await chrome.storage.local.get('relayConfig')
+  return (result['relayConfig'] as RelayStorage | undefined) ?? { relayUrl: '', lastSyncedAt: null }
+}
+
+async function saveRelayConfig(config: RelayStorage): Promise<void> {
+  await chrome.storage.local.set({ relayConfig: config })
 }
 
 // ── Available claim types for a detected set of fields ────────────────────────
@@ -131,13 +148,28 @@ async function handleMessage(
     try {
       const { Vault } = await import('../src/vault')
       const vault = await Vault.open(blob, message.passphrase)
-      // The DID keypair is derived from the mnemonic in the full flow;
-      // for now the passphrase-only path leaves the private key as a placeholder.
+
+      let ownerPrivateKey = new Uint8Array(0)
+      let ownerPublicKey = new Uint8Array(0)
+
+      if (message.mnemonic) {
+        const { restoreFromMnemonic, verifyMnemonicCommitment } = await import('../src/recovery')
+        const bundle = await restoreFromMnemonic(message.mnemonic)
+        if (bundle) {
+          if (!verifyMnemonicCommitment(message.mnemonic, vault.header.mnemonicCommitment)) {
+            sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'Recovery phrase does not match this vault' })
+            return
+          }
+          ownerPrivateKey = bundle.keypair.privateKey
+          ownerPublicKey = bundle.keypair.publicKey
+        }
+      }
+
       session = {
         vault,
         ownerDid: vault.owner.did,
-        ownerPrivateKey: new Uint8Array(0),  // placeholder — full flow via mnemonic restore
-        ownerPublicKey: new Uint8Array(0),
+        ownerPrivateKey,
+        ownerPublicKey,
       }
       sendResponse({ type: 'UNLOCK_RESULT', ok: true })
     } catch (err) {
@@ -148,6 +180,8 @@ async function handleMessage(
 
   if (message.type === 'LOCK_VAULT') {
     if (session) {
+      session.ownerPrivateKey.fill(0)
+      session.ownerPublicKey.fill(0)
       session.vault.lock().catch(() => { /* best effort */ })
       session = null
     }
@@ -371,6 +405,73 @@ async function handleMessage(
     return
   }
 
+  // ── Sync / relay messages ──────────────────────────────────────────────────
+
+  if (message.type === 'GET_RELAY_CONFIG') {
+    const config = await loadRelayConfig()
+    sendResponse({ type: 'RELAY_CONFIG', relayUrl: config.relayUrl, lastSyncedAt: config.lastSyncedAt })
+    return
+  }
+
+  if (message.type === 'SET_RELAY_CONFIG') {
+    const existing = await loadRelayConfig()
+    await saveRelayConfig({ ...existing, relayUrl: message.relayUrl })
+    sendResponse({ type: 'RELAY_CONFIG', relayUrl: message.relayUrl, lastSyncedAt: existing.lastSyncedAt })
+    return
+  }
+
+  if (message.type === 'SYNC_VAULT') {
+    if (!session) {
+      sendResponse({ type: 'SYNC_RESULT', ok: false, error: 'Vault is locked' })
+      return
+    }
+
+    const relayStorage = await loadRelayConfig()
+    if (!relayStorage.relayUrl) {
+      sendResponse({ type: 'SYNC_RESULT', ok: false, error: 'No relay URL configured' })
+      return
+    }
+
+    if (session.ownerPrivateKey.length === 0) {
+      sendResponse({ type: 'SYNC_RESULT', ok: false, error: 'Signing keypair not available — unlock with your recovery mnemonic to enable sync' })
+      return
+    }
+
+    try {
+      const { syncVault } = await import('../src/relay')
+      const localBlob = await session.vault.seal()
+      await chrome.storage.local.set({ vault: localBlob })
+
+      const relayConfig: RelayConfig = {
+        url: relayStorage.relayUrl,
+        ownerId: session.vault.owner.id,
+      }
+
+      const { blob, result } = await syncVault(
+        relayConfig,
+        localBlob,
+        session.ownerPrivateKey,
+        session.ownerPublicKey,
+      )
+
+      // If remote was newer, replace local storage with the pulled blob.
+      // We can't re-open in-memory without the passphrase (never stored), so the
+      // in-memory session keeps the current state; the updated blob will be loaded
+      // on next unlock.
+      if (result.action === 'pulled') {
+        await chrome.storage.local.set({ vault: blob })
+      }
+
+      const syncedAt = new Date().toISOString()
+      await saveRelayConfig({ relayUrl: relayStorage.relayUrl, lastSyncedAt: syncedAt })
+
+      sendResponse({ type: 'SYNC_RESULT', ok: true, action: result.action, syncedAt })
+    } catch (err) {
+      sendResponse({ type: 'SYNC_RESULT', ok: false, error: String(err) })
+    }
+    return
+  }
+
   sendResponse(null)
 }
 
@@ -379,6 +480,8 @@ async function handleMessage(
 // Lock vault when service worker is about to be suspended
 chrome.runtime.onSuspend.addListener(() => {
   if (session) {
+    session.ownerPrivateKey.fill(0)
+    session.ownerPublicKey.fill(0)
     session.vault.lock().catch(() => { /* best effort */ })
     session = null
   }

@@ -1,0 +1,18 @@
+name = "personal-vault-relay"
+main = "worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "VAULT_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_YOUR_KV_PREVIEW_NAMESPACE_ID"
+
+[build]
+command = ""
+
+# Deploy: cd relay && npx wrangler deploy
+# Create KV namespace first:
+#   npx wrangler kv:namespace create VAULT_KV
+#   npx wrangler kv:namespace create VAULT_KV --preview
+# Then paste the returned IDs above.
