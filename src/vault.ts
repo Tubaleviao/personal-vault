@@ -15,7 +15,7 @@ import { randomUUID, createHash } from 'crypto'
 import {
   deriveKey, generateSalt, keyVerificationHash,
   encryptString, decryptString,
-  zeroKey,
+  zeroKey, SCRYPT_N_DEFAULT, SCRYPT_N_V1,
 } from './crypto'
 import type { EncryptedBlob } from './crypto'
 
@@ -96,6 +96,7 @@ export interface VaultHeader {
   keyVerificationHash: string
   mnemonicCommitment: string  // SHA-256 hex of the BIP-39 mnemonic
   sequenceNumber: number  // increments on every seal(); used by relay to pick the newer copy
+  scryptN: number         // scrypt cost parameter — 65536 (2^16) for new vaults, 16384 (2^14) for old
 }
 
 // ── Persisted vault file structure ───────────────────────────────────────────
@@ -128,7 +129,7 @@ export class Vault {
     mnemonicCommitment: string
   }): Promise<Vault> {
     const salt = generateSalt()
-    const masterKey = await deriveKey(options.passphrase, salt)
+    const masterKey = await deriveKey(options.passphrase, salt, SCRYPT_N_DEFAULT)
     const keyHash = keyVerificationHash(masterKey)
     const saltB64 = Buffer.from(salt).toString('base64url')
     const ownerId = randomUUID()
@@ -140,6 +141,7 @@ export class Vault {
       keyVerificationHash: keyHash,
       mnemonicCommitment: options.mnemonicCommitment,
       sequenceNumber: 0,
+      scryptN: SCRYPT_N_DEFAULT,
     }
 
     const state: VaultState = {
@@ -163,7 +165,9 @@ export class Vault {
 
   static async open(persisted: PersistedVault, passphrase: string): Promise<Vault> {
     const salt = Buffer.from(persisted.header.salt, 'base64url')
-    const masterKey = await deriveKey(passphrase, new Uint8Array(salt))
+    // Fall back to legacy N for vaults created before scryptN was stored in the header
+    const N = persisted.header.scryptN ?? SCRYPT_N_V1
+    const masterKey = await deriveKey(passphrase, new Uint8Array(salt), N)
 
     const derivedHash = keyVerificationHash(masterKey)
     if (derivedHash !== persisted.header.keyVerificationHash) {
