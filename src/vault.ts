@@ -185,9 +185,9 @@ export class Vault {
   async seal(): Promise<PersistedVault> {
     this._assertUnlocked()
     this._header.sequenceNumber = (this._header.sequenceNumber ?? 0) + 1
+    this._appendAudit('vault-locked', 'owner', null, null)
     const plaintext = JSON.stringify(this._state)
     const encrypted = await encryptString(plaintext, this._masterKey)
-    this._appendAudit('vault-locked', 'owner', null, null)
     return { header: this._header, encrypted }
   }
 

@@ -35,7 +35,8 @@ function err(msg: string, status: number): Response {
 
 function b64urlToBytes(s: string): Uint8Array {
   const b64 = s.replace(/-/g, '+').replace(/_/g, '/')
-  const bin = atob(b64)
+  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
+  const bin = atob(padded)
   return Uint8Array.from(bin, c => c.charCodeAt(0))
 }
 
@@ -61,14 +62,18 @@ async function verifyEd25519(
 
 // ── Challenge endpoint ────────────────────────────────────────────────────────
 
-async function handleChallenge(env: Env): Promise<Response> {
+async function handleChallenge(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url)
+  const ownerId = url.searchParams.get('ownerId')
+  if (!ownerId) return err('Missing ownerId query parameter', 400)
+
   const nonce = bytesToB64url(crypto.getRandomValues(new Uint8Array(32)))
   const expiresAt = new Date(Date.now() + 60_000).toISOString()
 
-  // Store with a 90-second KV TTL (slightly longer than the 60 s client window)
+  // Store nonce bound to the requesting ownerId to prevent cross-owner reuse
   await env.VAULT_KV.put(
     `nonce:${nonce}`,
-    JSON.stringify({ expiresAt }),
+    JSON.stringify({ ownerId, expiresAt }),
     { expirationTtl: 90 },
   )
 
@@ -91,11 +96,12 @@ async function verifyAuth(
   signatureB64: string,
   publicKeyB64: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
-  // 1. Validate nonce
-  const nonceEntry = await env.VAULT_KV.get<{ expiresAt: string }>(
+  // 1. Validate nonce — must exist, not be expired, and be bound to this ownerId
+  const nonceEntry = await env.VAULT_KV.get<{ ownerId: string; expiresAt: string }>(
     `nonce:${nonce}`, 'json',
   )
   if (!nonceEntry) return { ok: false, error: 'Nonce not found or expired' }
+  if (nonceEntry.ownerId !== ownerId) return { ok: false, error: 'Nonce was not issued for this owner' }
   if (new Date(nonceEntry.expiresAt) < new Date()) {
     return { ok: false, error: 'Nonce expired' }
   }
@@ -188,7 +194,7 @@ export default {
     const parts = url.pathname.split('/').filter(Boolean)
 
     if (req.method === 'POST' && parts[0] === 'challenge') {
-      return handleChallenge(env)
+      return handleChallenge(req, env)
     }
 
     if (parts[0] === 'vault' && parts[1]) {

@@ -153,9 +153,13 @@ async function handleMessage(
       let ownerPublicKey = new Uint8Array(0)
 
       if (message.mnemonic) {
-        const { restoreFromMnemonic } = await import('../src/recovery')
+        const { restoreFromMnemonic, verifyMnemonicCommitment } = await import('../src/recovery')
         const bundle = await restoreFromMnemonic(message.mnemonic)
         if (bundle) {
+          if (!verifyMnemonicCommitment(message.mnemonic, vault.header.mnemonicCommitment)) {
+            sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'Recovery phrase does not match this vault' })
+            return
+          }
           ownerPrivateKey = bundle.keypair.privateKey
           ownerPublicKey = bundle.keypair.publicKey
         }
@@ -176,6 +180,8 @@ async function handleMessage(
 
   if (message.type === 'LOCK_VAULT') {
     if (session) {
+      session.ownerPrivateKey.fill(0)
+      session.ownerPublicKey.fill(0)
       session.vault.lock().catch(() => { /* best effort */ })
       session = null
     }
@@ -472,6 +478,8 @@ async function handleMessage(
 // Lock vault when service worker is about to be suspended
 chrome.runtime.onSuspend.addListener(() => {
   if (session) {
+    session.ownerPrivateKey.fill(0)
+    session.ownerPublicKey.fill(0)
     session.vault.lock().catch(() => { /* best effort */ })
     session = null
   }

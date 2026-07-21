@@ -24,8 +24,8 @@ export interface SyncResult {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-async function fetchChallenge(relayUrl: string): Promise<string> {
-  const res = await fetch(`${relayUrl}/challenge`, { method: 'POST' })
+async function fetchChallenge(relayUrl: string, ownerId: string): Promise<string> {
+  const res = await fetch(`${relayUrl}/challenge?ownerId=${encodeURIComponent(ownerId)}`, { method: 'POST' })
   if (!res.ok) throw new Error(`Challenge failed: ${res.status}`)
   const { nonce } = await res.json() as { nonce: string }
   if (!nonce) throw new Error('Relay returned no nonce')
@@ -67,7 +67,7 @@ export async function pushVault(
   publicKey: Uint8Array,
   isFirstRegistration = false,
 ): Promise<{ updatedAt: string }> {
-  const nonce = await fetchChallenge(config.url)
+  const nonce = await fetchChallenge(config.url, config.ownerId)
   const headers = await buildAuthHeaders(
     config.ownerId, nonce, privateKey, publicKey, isFirstRegistration,
   )
@@ -98,7 +98,7 @@ export async function pullVault(
   privateKey: Uint8Array,
   publicKey: Uint8Array,
 ): Promise<{ blob: PersistedVault; updatedAt: string } | null> {
-  const nonce = await fetchChallenge(config.url)
+  const nonce = await fetchChallenge(config.url, config.ownerId)
   const headers = await buildAuthHeaders(
     config.ownerId, nonce, privateKey, publicKey, false,
   )
@@ -171,7 +171,6 @@ export async function syncVault(
   }
 
   const { chosen, source } = chooseBlobToKeep(localBlob, remote.blob)
-  const updatedAt = new Date().toISOString()
 
   if (source === 'local') {
     // Local is newer — push it
@@ -183,7 +182,8 @@ export async function syncVault(
   const remoteSeq = (remote.blob.header as { sequenceNumber?: number }).sequenceNumber ?? 0
 
   if (localSeq === remoteSeq) {
-    return { blob: localBlob, result: { action: 'already-current', updatedAt: remote.updatedAt } }
+    // Equal sequence numbers — remote is already the authoritative copy; keep it locally too
+    return { blob: remote.blob, result: { action: 'already-current', updatedAt: remote.updatedAt } }
   }
 
   // Remote is newer — return it so the caller can replace local storage
