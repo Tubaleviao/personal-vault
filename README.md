@@ -261,6 +261,58 @@ Once loaded:
 
 ---
 
+## Security
+
+### Current posture
+
+**Vault encryption is strong against classical attacks.**
+The vault blob is encrypted with XChaCha20-Poly1305 using a 256-bit key derived from your passphrase via scrypt. An attacker who steals the encrypted file gets nothing useful without the passphrase — there is no server-side key to subpoena, no vendor who holds a copy.
+
+**The master key never touches disk.**
+It is derived on unlock, lives only in process memory, and is zeroed when you lock the vault. A memory dump after locking yields nothing.
+
+**Wrong passphrase is rejected before decryption.**
+The vault header stores a `keyVerificationHash`. If it does not match, the ciphertext is never touched — there is no oracle for partial decryption.
+
+**Grants and audit entries are cryptographically bound.**
+Every grant is signed with your Ed25519 private key. `validateGrant()` re-verifies the signature on every read — a tampered or forged grant is rejected. The audit log is a hash chain: `verifyChain()` detects any modification or gap.
+
+**No plaintext leaves the vault.**
+`Claim.value` is always encrypted inside the vault blob. The browser extension sends field values to the page only after an explicit user approval action.
+
+---
+
+### Quantum computing considerations
+
+A sufficiently large quantum computer would affect different parts of the stack differently.
+
+**Safe (or safe enough):**
+- XChaCha20-Poly1305 — symmetric encryption. Grover's algorithm halves effective key length, leaving ~128-bit quantum security. This is considered sufficient.
+- scrypt + SHA-256 — same reasoning. The derived key and hashes retain ~128-bit quantum security.
+
+**Vulnerable:**
+- Ed25519 — asymmetric/elliptic-curve cryptography. Shor's algorithm can break it efficiently on a large enough quantum computer. Ed25519 is used for DID identity keys, grant signatures, and sharing bundle signatures.
+
+**The "harvest now, decrypt later" threat:**
+An adversary can copy your encrypted vault blob today and wait for quantum hardware to mature. The vault blob itself remains protected (symmetric crypto), but Ed25519-signed artifacts — grants, sharing bundles, DID-linked claims — could be broken or forged retroactively.
+
+*No quantum computer today can break 256-bit ECC. This is a future risk, not a present one. It becomes relevant if your data needs to stay confidential for 10+ years.*
+
+---
+
+### Planned security improvements
+
+| Improvement | Notes |
+|---|---|
+| Replace Ed25519 with a post-quantum signature scheme | ML-DSA (FIPS 204 / CRYSTALS-Dilithium) is the recommended target — lattice-based, NIST-standardized, drop-in replacement for signing |
+| Hybrid signatures during migration | Sign with both Ed25519 + ML-DSA; both must verify. Protects against classical and quantum attackers simultaneously during the transition period |
+| Upgrade scrypt N to 2^16 | Currently 2^14 to stay within Node's default memory limits. Higher N makes brute-force passphrase attacks more expensive |
+| STRIDE threat model document | Formal analysis of all trust boundaries, attacker capabilities, and mitigations |
+| External cryptography review | Independent audit of the crypto primitives and their usage before any production deployment |
+| SD-JWT full spec conformance | Current `frameSDJWT()` is a stub; full conformance adds selective disclosure without revealing the full claim set |
+
+---
+
 ## License
 
 MIT

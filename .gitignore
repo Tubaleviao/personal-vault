@@ -2,3 +2,5 @@ node_modules/
 dist/
 *.ir-snapshot.json
 .quoin-manifest.json
+crypto-shim.js
+extension/crypto-shim.js

@@ -266,6 +266,42 @@ export function filterFillMapForSite(fillMap: FillMap, approvedClaimTypes: strin
   return fillMap.filter(entry => approved.has(entry.claimType))
 }
 
+// ── Credential management ─────────────────────────────────────────────────────
+
+export const CREDENTIAL_CLAIM_TYPE = 'credential:login'
+
+export interface CredentialValue {
+  origin: string
+  username: string
+  password: string
+}
+
+/** Safe credential descriptor returned to the content script — password intentionally absent. */
+export interface CredentialEntry {
+  claimId: string
+  origin: string
+  username: string
+}
+
+/** Return all credential:login claims matching the exact origin. */
+export function findCredentialsForOrigin(claims: Claim[], origin: string): CredentialEntry[] {
+  return claims
+    .filter(c => c.type === CREDENTIAL_CLAIM_TYPE)
+    .map(c => {
+      const v = c.value as CredentialValue
+      return { claimId: c.id, origin: v.origin, username: v.username }
+    })
+    .filter(e => e.origin === origin)
+}
+
+/** Find one credential by claim ID and return the full value including password.
+ *  Only called after the user has clicked Fill. */
+export function getCredentialById(claims: Claim[], claimId: string): CredentialValue | null {
+  const claim = claims.find(c => c.id === claimId && c.type === CREDENTIAL_CLAIM_TYPE)
+  if (!claim) return null
+  return claim.value as CredentialValue
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function claimValueToString(claimType: string, value: unknown): string | null {

@@ -56,7 +56,7 @@ export interface Grant {
 
 export type AuditAction =
   | 'grant-created' | 'grant-revoked' | 'grant-expired'
-  | 'claim-added' | 'claim-deleted'
+  | 'claim-added' | 'claim-updated' | 'claim-deleted'
   | 'vault-unlocked' | 'vault-locked'
   | 'recovery-started' | 'recovery-completed'
   | 'bundle-accessed'
@@ -221,6 +221,15 @@ export class Vault {
   listClaims(): Claim[] {
     this._assertUnlocked()
     return Object.values(this._state.claims)
+  }
+
+  updateClaim(id: string, patch: Partial<Omit<Claim, 'id' | 'ownerId'>>): Claim {
+    this._assertUnlocked()
+    const claim = this._state.claims[id]
+    if (!claim) throw new Error(`Claim not found: ${id}`)
+    Object.assign(claim, patch)
+    this._appendAudit('claim-updated', 'owner', null, { claimType: claim.type })
+    return claim
   }
 
   deleteClaim(id: string): void {
