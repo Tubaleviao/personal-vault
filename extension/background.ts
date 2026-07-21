@@ -332,6 +332,8 @@ async function handleMessage(
     }
 
     if (message.existingClaimId) {
+      const target = session.vault.getClaim(message.existingClaimId)
+      if (target.type !== CREDENTIAL_CLAIM_TYPE) { sendResponse(null); return }
       session.vault.updateClaim(message.existingClaimId, { value })
     } else {
       session.vault.addClaim({

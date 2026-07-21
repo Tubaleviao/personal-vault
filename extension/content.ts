@@ -200,7 +200,7 @@ function detectLoginForm(): LoginForm | null {
 let credentialBanner: HTMLElement | null = null
 
 function showCredentialFillBanner(credentials: CredentialEntry[], loginForm: LoginForm) {
-  if (credentialBanner) credentialBanner.remove()
+  if (credentialBanner) { credentialBanner.remove(); credentialBanner = null }
 
   const origin = window.location.hostname
   const banner = document.createElement('div')
@@ -221,7 +221,7 @@ function showCredentialFillBanner(credentials: CredentialEntry[], loginForm: Log
   const btnDismiss = document.createElement('button')
   btnDismiss.textContent = '✕'
   btnDismiss.setAttribute('style', 'background:transparent;color:#94a3b8;border:none;cursor:pointer;font-size:14px;padding:4px')
-  btnDismiss.onclick = () => banner.remove()
+  btnDismiss.onclick = () => { banner.remove(); credentialBanner = null }
 
   header.appendChild(title)
   header.appendChild(btnDismiss)
@@ -240,6 +240,7 @@ function showCredentialFillBanner(credentials: CredentialEntry[], loginForm: Log
     btnFill.setAttribute('style', 'background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:12px;flex-shrink:0')
     btnFill.onclick = async () => {
       banner.remove()
+      credentialBanner = null
       const resp = await chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
         type: 'CREDENTIAL_FILL_CONFIRMED',
         claimId: cred.claimId,
@@ -263,8 +264,9 @@ function showCredentialSaveBanner(
   origin: string,
   password: string,
   existingClaimId: string | undefined,
+  form: HTMLFormElement,
 ) {
-  if (credentialBanner) credentialBanner.remove()
+  if (credentialBanner) { credentialBanner.remove(); credentialBanner = null }
 
   const hostname = new URL(origin).hostname
   const isUpdate = existingClaimId !== undefined
@@ -289,7 +291,9 @@ function showCredentialSaveBanner(
   btnDismiss.setAttribute('style', 'background:transparent;color:#94a3b8;border:none;cursor:pointer;font-size:14px;padding:4px')
   btnDismiss.onclick = () => {
     banner.remove()
+    credentialBanner = null
     chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({ type: 'CREDENTIAL_SAVE_DENIED' }).catch(() => { /* ignore */ })
+    resubmitForm(form)
   }
 
   header.appendChild(title)
@@ -304,6 +308,7 @@ function showCredentialSaveBanner(
   btnSave.setAttribute('style', 'flex:1;background:#16a34a;color:#fff;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px')
   btnSave.onclick = () => {
     banner.remove()
+    credentialBanner = null
     chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
       type: 'CREDENTIAL_SAVE_CONFIRMED',
       origin,
@@ -311,6 +316,7 @@ function showCredentialSaveBanner(
       password,
       existingClaimId,
     }).catch(() => { /* ignore */ })
+    resubmitForm(form)
   }
 
   const btnNotNow = document.createElement('button')
@@ -318,7 +324,9 @@ function showCredentialSaveBanner(
   btnNotNow.setAttribute('style', 'flex:1;background:#334155;color:#f1f5f9;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px')
   btnNotNow.onclick = () => {
     banner.remove()
+    credentialBanner = null
     chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({ type: 'CREDENTIAL_SAVE_DENIED' }).catch(() => { /* ignore */ })
+    resubmitForm(form)
   }
 
   row.appendChild(btnSave)
@@ -399,7 +407,20 @@ async function main() {
 
 // ── Submit interception (credential save) ─────────────────────────────────────
 
+// Set while we are programmatically re-submitting after the user decides.
+let resubmitting = false
+
+function resubmitForm(form: HTMLFormElement) {
+  resubmitting = true
+  try {
+    form.requestSubmit()
+  } finally {
+    resubmitting = false
+  }
+}
+
 document.addEventListener('submit', (event: Event) => {
+  if (resubmitting) return
   const form = event.target as HTMLFormElement | null
   if (!form || !activeLoginForm) return
 
@@ -411,6 +432,9 @@ document.addEventListener('submit', (event: Event) => {
   const username = usernameEl?.value ?? ''
   if (!password) return
 
+  // Prevent navigation so the async flow can complete and show the banner.
+  event.preventDefault()
+
   const origin = window.location.origin
   chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
     type: 'CREDENTIAL_SUBMIT',
@@ -419,9 +443,12 @@ document.addEventListener('submit', (event: Event) => {
     password,
   }).then(resp => {
     if (resp?.type === 'CREDENTIAL_SAVE_PROMPT') {
-      showCredentialSaveBanner(resp.username, origin, password, resp.existingClaimId)
+      showCredentialSaveBanner(resp.username, origin, password, resp.existingClaimId, form)
+    } else {
+      // No prompt needed (password unchanged or vault locked) — proceed with submit
+      resubmitForm(form)
     }
-  }).catch(() => { /* ignore */ })
+  }).catch(() => { resubmitForm(form) })
 }, { capture: true })
 
 // Run once at document_idle; re-run if the DOM mutates significantly (SPAs).
@@ -434,7 +461,9 @@ new MutationObserver(() => {
     mutationDebounce = null
     const hasIdentityBanner = !!document.getElementById('__pvault_banner')
     const hasCredentialBanner = !!document.getElementById('__pvault_cred_banner') || !!document.getElementById('__pvault_cred_save_banner')
-    if (!hasIdentityBanner && !hasCredentialBanner) {
+    if (hasIdentityBanner || hasCredentialBanner) return
+    // Only re-run if there's something to detect (avoids IPC churn on inert pages)
+    if (detectFields().length > 0 || detectLoginForm() !== null) {
       main().catch(() => { /* ignore */ })
     }
   }, 1500)

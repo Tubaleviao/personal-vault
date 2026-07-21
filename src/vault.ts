@@ -227,8 +227,9 @@ export class Vault {
     this._assertUnlocked()
     const claim = this._state.claims[id]
     if (!claim) throw new Error(`Claim not found: ${id}`)
+    const originalType = claim.type
     Object.assign(claim, patch)
-    this._appendAudit('claim-updated', 'owner', null, { claimType: claim.type })
+    this._appendAudit('claim-updated', 'owner', null, { claimType: originalType })
     return claim
   }
 
