@@ -13,7 +13,7 @@ Own your data. Control who reads it. Revoke access at any time.
 | Encrypted local storage | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Open source | ❌ | ✅ | ❌ | — | ✅ | ✅ |
 | Browser auto-fill | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Cross-device sync | ✅ | ✅ | ✅ | ✅ | ✅ | 🔜 |
+| Cross-device sync | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | BIP-39 recovery phrase | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Self-sovereign DID identity | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | W3C Verifiable Credentials | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
@@ -21,8 +21,6 @@ Own your data. Control who reads it. Revoke access at any time.
 | Revocable access grants | ❌ | ❌ | ❌ | ❌ | Partial | ✅ |
 | Tamper-evident audit log | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Vendor holds your data | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-
-> 🔜 = planned, not yet implemented.
 
 The key difference: password managers store and replay credentials on your behalf. personal-vault goes further — it lets you grant any application access to a specific piece of your identity (e.g. your date of birth, not your entire profile), log every read, and revoke that access at any time.
 
@@ -241,11 +239,14 @@ Once loaded:
 | Tamper-evident audit log | ✅ Done |
 | Consent & grant layer (create, validate, revoke) | ✅ Done |
 | Browser extension (auto-fill with per-site approval) | ✅ Done |
-| Cross-device sync relay | 🔜 Planned |
-| Mobile apps (iOS, Android) | 🔜 Planned |
+| Cross-device sync relay (Cloudflare Workers + KV) | ✅ Done |
+| Desktop app (Tauri — Windows / macOS / Linux) | 🔜 Next |
 | Full SD-JWT spec conformance | 🔜 Planned |
 | VC proof verification in `importVC()` | 🔜 Planned |
 | STRIDE threat model + external crypto review | 🔜 Planned |
+| Mobile apps (iOS, Android) | 🔜 Planned |
+
+See [ROADMAP.md](ROADMAP.md) for the full build plan with implementation detail.
 
 ---
 
