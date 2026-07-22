@@ -102,7 +102,7 @@ export async function createBundle(opts: CreateBundleOptions): Promise<{ bundle:
     expiresAt: opts.expiresAt?.toISOString() ?? null,
   }
 
-  const canonical = JSON.stringify(payload)
+  const canonical = JSON.stringify(sortKeys(payload))
   const canonicalBytes = new TextEncoder().encode(canonical)
 
   const ownerSig = await sign(canonicalBytes, opts.ownerPrivateKey)
@@ -198,13 +198,27 @@ export async function verifyBundle(
     expiresAt: payload.expiresAt,
     claims: payload.claims.map(c => ({
       ...c,
-      badge: sourceToBadge(c.source),
+      badge: sourceToBadge(c.source, c.verification),
     })),
   }
 }
 
-function sourceToBadge(source: Claim['source']): 'self-attested' | 'verified' | 'imported' {
-  if (source === 'issuer-signed') return 'verified'
+function sourceToBadge(
+  source: Claim['source'],
+  verification: Claim['verification'],
+): 'self-attested' | 'verified' | 'imported' {
+  if (source === 'issuer-signed' && verification === 'verified') return 'verified'
+  if (source === 'issuer-signed') return 'imported'
   if (source === 'imported') return 'imported'
   return 'self-attested'
+}
+
+function sortKeys(val: unknown): unknown {
+  if (val === null || typeof val !== 'object') return val
+  if (Array.isArray(val)) return (val as unknown[]).map(sortKeys)
+  const sorted: Record<string, unknown> = {}
+  for (const k of Object.keys(val as object).sort()) {
+    sorted[k] = sortKeys((val as Record<string, unknown>)[k])
+  }
+  return sorted
 }

@@ -58,9 +58,10 @@ export function verifyMnemonicCommitment(mnemonic: string, commitment: string): 
  * Derive a MnemonicBundle from a validated mnemonic string.
  */
 async function deriveBundleFromMnemonic(mnemonic: string): Promise<MnemonicBundle> {
-  // bip39.mnemonicToSeed returns a 64-byte Buffer
+  // bip39.mnemonicToSeed returns a Buffer that may be a slice of a shared pool —
+  // use byteOffset so we read the correct region of the underlying ArrayBuffer.
   const seed64 = await bip39.mnemonicToSeed(mnemonic)
-  const seed32 = new Uint8Array(seed64.buffer, 0, 32)
+  const seed32 = new Uint8Array(seed64.buffer, seed64.byteOffset, 32)
   const keypair = await keypairFromSeed(seed32)
   const mnemonicCommitment = sha256Hex(mnemonic)
   return { mnemonic, mnemonicCommitment, keypair }

@@ -9,7 +9,11 @@ import type { PersistedVault } from '@vault/vault'
 export async function readVaultFile(): Promise<PersistedVault | null> {
   const raw = await invoke<string | null>('read_vault_file')
   if (raw === null) return null
-  return JSON.parse(raw) as PersistedVault
+  try {
+    return JSON.parse(raw) as PersistedVault
+  } catch {
+    return null
+  }
 }
 
 export async function writeVaultFile(vault: PersistedVault): Promise<void> {
