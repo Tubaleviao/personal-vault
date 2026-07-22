@@ -40,8 +40,8 @@ All steps below are implemented. Modules are in `src/` and `extension/`.
 - [x] `npm audit` in CI — `.github/workflows/ci.yml` runs audit + `tsc --noEmit` + extension build on every push/PR
 - [x] Upgrade scrypt N from 2^14 to 2^16 — `VaultHeader.scryptN` stores the parameter; old vaults fall back to 16384 transparently
 - [ ] Plan for external cryptography review before public launch — noted in `THREAT_MODEL.md` open risks; fund via NLnet/NGI grant
-- [ ] SD-JWT full spec conformance (current `frameSDJWT()` is a stub)
-- [ ] VC proof verification in `importVC()`
+- [x] SD-JWT full spec conformance — `issueSDJWT()` / `verifySDJWT()` in `did.ts` implement the compact `~`-separated format with per-claim salt disclosures and SHA-256 digests; `frameSDJWT()` kept as a deprecated wrapper
+- [x] VC proof verification in `importVC()` — `verifyVCProof()` checks Ed25519Signature2020 proofs; claims get `verification: 'verified'` only on a valid cryptographic check, `'none'` otherwise
 
 ---
 

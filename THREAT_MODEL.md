@@ -67,7 +67,7 @@
 | Wrong-passphrase oracle (timing) | Vault open | `keyVerificationHash` check is SHA-256 comparison (constant-time in Node crypto) before decrypt | ✅ Implemented |
 | Claim values leaked in form-fill logs | Extension | Only fill values are injected into form fields; no logging of claim values to console or storage | ✅ Implemented |
 | Recovery phrase stored in vault | Recovery | Only SHA-256 commitment stored in `VaultHeader.mnemonicCommitment`; phrase never persisted | ✅ Implemented |
-| VC proofs not verified on import | `did.ts` importVC | `importVC()` accepts VC without cryptographic proof check — see **open risk** below | ⚠️ Partial |
+| VC proofs not verified on import | `did.ts` importVC | `verifyVCProof()` checks Ed25519Signature2020 proofs; `importVC()` now sets `verification: 'verified'` only after a successful cryptographic check, `'none'` otherwise | ✅ Implemented |
 
 ### D — Denial of Service
 
@@ -93,8 +93,8 @@
 
 | Risk | Severity | Mitigation path |
 |------|----------|-----------------|
-| VC proof not verified in `importVC()` | Medium | Claims imported from VCs are tagged `source: 'issuer-signed'` and `verification: 'verified'` without actual cryptographic proof check. An attacker who can feed a malicious VC gains a falsely-verified claim. Fix: implement Ed25519/secp256k1 proof verification per W3C VC Data Model. |
-| SD-JWT is a stub | Medium | `frameSDJWT()` produces a non-standard payload; recipients cannot verify it against the SD-JWT draft spec. Risk is limited to push-sharing consumers who expect SD-JWT. Fix: implement full SD-JWT spec conformance (hash disclosures, `_sd` array). |
+| VC proof not verified in `importVC()` | ~~Medium~~ | **Resolved.** `verifyVCProof()` verifies Ed25519Signature2020 proofs using the W3C VC Data Model signing input (SHA-256 of proof options + SHA-256 of document). Claims from unverified VCs get `verification: 'none'`. Limitation: full RDFC-1.0 JSON-LD canonicalization is not implemented; issuers that deviate from sorted-key JSON will produce `'none'`. |
+| SD-JWT is a stub | ~~Medium~~ | **Resolved.** `issueSDJWT()` / `verifySDJWT()` implement the SD-JWT compact format (draft-ietf-oauth-selective-disclosure-jwt): per-claim salted disclosures, SHA-256 digests in `_sd`, spec-compliant `~`-separated compact serialisation. `frameSDJWT()` is deprecated but preserved for backwards compatibility. |
 | Cloudflare Worker rate limiting not configured | Low | The relay has no per-IP request cap beyond Cloudflare's default abuse protection. A determined attacker could hammer the challenge endpoint. Mitigation: add `wrangler` rate limiting rule or a KV-based counter. |
 | scrypt N stored in VaultHeader (client-controlled) | Low | ~~Mitigated~~: `Vault.open()` enforces `scryptN >= SCRYPT_N_MIN` (16384) and `<= SCRYPT_N_MAX` (2^20) before calling `deriveKey`; `deriveKey` independently validates the range. Crafted headers outside this band are rejected before any memory allocation. |
 | No external cryptographic audit | High | All crypto primitives are off-the-shelf (libsodium, Node built-ins), but the protocol composition (key derivation, grant signing, bundle format) has not been reviewed by an independent cryptographer. Plan: fund via NLnet/NGI grant before public launch. |
