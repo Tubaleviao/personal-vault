@@ -195,7 +195,7 @@ export async function verifyVCProof(vc: RawVC): Promise<boolean> {
     return false
   }
 
-  return verify(signingInput, Buffer.from(sigBytes).toString('base64url').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''), publicKey)
+  return verify(signingInput, Buffer.from(sigBytes).toString('base64url'), publicKey)
 }
 
 /** Deterministic canonical JSON: keys sorted recursively. */
@@ -343,7 +343,7 @@ export async function verifySDJWT(
 ): Promise<SDJWTVerification | SDJWTVerificationFailure> {
   // Split on '~'; first part is <header>.<payload>.<sig>
   const parts = compact.split('~')
-  if (parts.length < 1) return { ok: false, reason: 'malformed' }
+  if (parts.length < 2) return { ok: false, reason: 'malformed' }
 
   const jwtPart = parts[0]
   const disclosureParts = parts.slice(1).filter(d => d.length > 0)
@@ -384,10 +384,13 @@ export async function verifySDJWT(
   // 3. Verify disclosures against _sd digests
   const sdDigests = (payloadObj['_sd'] as string[] | undefined) ?? []
   const disclosedClaims: Array<{ name: string; value: unknown }> = []
+  const seenDigests = new Set<string>()
 
   for (const disclosure of disclosureParts) {
     const digest = createHash('sha256').update(disclosure).digest('base64url')
     if (!sdDigests.includes(digest)) return { ok: false, reason: 'digest-mismatch' }
+    if (seenDigests.has(digest)) return { ok: false, reason: 'digest-mismatch' }
+    seenDigests.add(digest)
 
     let disclosureArr: [string, string, unknown]
     try {
@@ -435,7 +438,8 @@ export async function frameSDJWT(
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 function base58Encode(bytes: Uint8Array): string {
-  let num = BigInt('0x' + Buffer.from(bytes).toString('hex') || '0')
+  const hex = Buffer.from(bytes).toString('hex')
+  let num = hex.length > 0 ? BigInt('0x' + hex) : 0n
   let encoded = ''
   while (num > 0n) {
     encoded = BASE58_ALPHABET[Number(num % 58n)]! + encoded
