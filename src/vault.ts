@@ -15,7 +15,7 @@ import { randomUUID, createHash } from 'crypto'
 import {
   deriveKey, generateSalt, keyVerificationHash,
   encryptString, decryptString,
-  zeroKey,
+  zeroKey, SCRYPT_N_DEFAULT, SCRYPT_N_V1, SCRYPT_N_MIN,
 } from './crypto'
 import type { EncryptedBlob } from './crypto'
 
@@ -96,6 +96,7 @@ export interface VaultHeader {
   keyVerificationHash: string
   mnemonicCommitment: string  // SHA-256 hex of the BIP-39 mnemonic
   sequenceNumber: number  // increments on every seal(); used by relay to pick the newer copy
+  scryptN: number         // scrypt cost parameter — 65536 (2^16) for new vaults, 16384 (2^14) for old
 }
 
 // ── Persisted vault file structure ───────────────────────────────────────────
@@ -128,7 +129,7 @@ export class Vault {
     mnemonicCommitment: string
   }): Promise<Vault> {
     const salt = generateSalt()
-    const masterKey = await deriveKey(options.passphrase, salt)
+    const masterKey = await deriveKey(options.passphrase, salt, SCRYPT_N_DEFAULT)
     const keyHash = keyVerificationHash(masterKey)
     const saltB64 = Buffer.from(salt).toString('base64url')
     const ownerId = randomUUID()
@@ -140,6 +141,7 @@ export class Vault {
       keyVerificationHash: keyHash,
       mnemonicCommitment: options.mnemonicCommitment,
       sequenceNumber: 0,
+      scryptN: SCRYPT_N_DEFAULT,
     }
 
     const state: VaultState = {
@@ -163,7 +165,13 @@ export class Vault {
 
   static async open(persisted: PersistedVault, passphrase: string): Promise<Vault> {
     const salt = Buffer.from(persisted.header.salt, 'base64url')
-    const masterKey = await deriveKey(passphrase, new Uint8Array(salt))
+    // Fall back to legacy N for vaults created before scryptN was stored in the header.
+    // deriveKey enforces SCRYPT_N_MIN <= N <= SCRYPT_N_MAX, rejecting crafted headers.
+    const N = persisted.header.scryptN ?? SCRYPT_N_V1
+    if (N < SCRYPT_N_MIN) {
+      throw new Error(`Vault header scryptN=${N} is below the minimum (${SCRYPT_N_MIN}); refusing to open`)
+    }
+    const masterKey = await deriveKey(passphrase, new Uint8Array(salt), N)
 
     const derivedHash = keyVerificationHash(masterKey)
     if (derivedHash !== persisted.header.keyVerificationHash) {
@@ -315,9 +323,19 @@ export class Vault {
     const createdAt = new Date().toISOString()
     const ownerId = this._state.owner.id
 
-    const canonical = JSON.stringify({ id, ownerId, grantId, action, actor, detail, prevHash, createdAt })
+    const canonical = JSON.stringify(sortKeys({ id, ownerId, grantId, action, actor, detail, prevHash, createdAt }))
     const entryHash = createHash('sha256').update(canonical, 'utf8').digest('hex')
 
     log.push({ id, ownerId, grantId, action, actor, detail, prevHash, entryHash, createdAt })
   }
+}
+
+function sortKeys(val: unknown): unknown {
+  if (val === null || typeof val !== 'object') return val
+  if (Array.isArray(val)) return val.map(sortKeys)
+  const sorted: Record<string, unknown> = {}
+  for (const k of Object.keys(val as object).sort()) {
+    sorted[k] = sortKeys((val as Record<string, unknown>)[k])
+  }
+  return sorted
 }

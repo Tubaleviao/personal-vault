@@ -36,10 +36,10 @@ All steps below are implemented. Modules are in `src/` and `extension/`.
 
 ### Step 3.3 — Security hygiene
 
-- [ ] STRIDE threat model document (one-pager covering all trust boundaries and mitigations)
-- [ ] `npm audit` / dependency pinning in CI
-- [ ] Plan for external cryptography review before public launch
-- [ ] Upgrade scrypt N from 2^14 to 2^16
+- [x] STRIDE threat model document — `THREAT_MODEL.md` covers all trust boundaries, mitigations, and open risks
+- [x] `npm audit` in CI — `.github/workflows/ci.yml` runs audit + `tsc --noEmit` + extension build on every push/PR
+- [x] Upgrade scrypt N from 2^14 to 2^16 — `VaultHeader.scryptN` stores the parameter; old vaults fall back to 16384 transparently
+- [ ] Plan for external cryptography review before public launch — noted in `THREAT_MODEL.md` open risks; fund via NLnet/NGI grant
 - [ ] SD-JWT full spec conformance (current `frameSDJWT()` is a stub)
 - [ ] VC proof verification in `importVC()`
 
