@@ -100,14 +100,14 @@ Once the desktop app is running, the browser extension can delegate vault I/O to
 
 ### Build steps
 
-- [ ] Scaffold `desktop/` with `npm create tauri-app`
-- [ ] Write `read_vault_file` / `write_vault_file` Rust commands
-- [ ] Wire Vite config to resolve `../src/` vault library imports
-- [ ] Unlock / lock screen (passphrase entry, calls `Vault.open`)
-- [ ] Claims list + add/edit/delete UI
-- [ ] Audit log viewer
-- [ ] Sync panel (relay URL config + manual sync trigger)
-- [ ] Package and test on Linux, macOS, Windows
+- [x] Scaffold `desktop/` — Cargo.toml, tauri.conf.json, Vite config, package.json, index.html
+- [x] Write `read_vault_file` / `write_vault_file` / `vault_file_exists` Rust commands in `commands.rs`
+- [x] Wire Vite config to resolve `../src/` vault library imports via `@vault/*` alias
+- [x] Unlock / lock screen (`screens/Unlock.tsx` — create vault or open existing, shows recovery phrase on create)
+- [x] Claims list + add/edit/delete UI (`screens/Claims.tsx`)
+- [x] Audit log viewer with chain-integrity badge (`screens/Audit.tsx`)
+- [x] Sync panel — relay URL config + manual sync trigger (`screens/Sync.tsx`)
+- [ ] Package and test on Linux, macOS, Windows (requires Rust + `cargo tauri build`)
 - [ ] (Follow-up) Native messaging host so the extension can delegate to the desktop app
 
 ---
