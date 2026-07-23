@@ -161,13 +161,10 @@ async function handlePut(req: Request, env: Env, ownerId: string): Promise<Respo
   const auth = await verifyAuth(env, ownerId, nonce, signature, publicKey)
   if (!auth.ok) return err(auth.error ?? 'Unauthorized', 401)
 
-  const contentLength = Number(req.headers.get('Content-Length') ?? '0')
-  if (contentLength > MAX_VAULT_BYTES) return err('Vault blob exceeds 5 MB limit', 413)
-
   let body: unknown
   try {
     const text = await req.text()
-    if (new TextEncoder().encode(text).length > MAX_VAULT_BYTES) return err('Vault blob exceeds 5 MB limit', 413)
+    if (text.length > MAX_VAULT_BYTES) return err('Vault blob exceeds 5 MB limit', 413)
     body = JSON.parse(text)
   } catch {
     return err('Invalid JSON body', 400)

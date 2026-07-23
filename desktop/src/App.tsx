@@ -34,6 +34,13 @@ export default function App() {
   const handleLock = useCallback(async () => {
     if (!unlocked) return
     try {
+      // Zero any dynamically-attached recovery keypair before locking.
+      const vaultAny = unlocked.vault as unknown as { _recoveryKeypair?: { privateKey: Uint8Array; publicKey: Uint8Array } }
+      if (vaultAny._recoveryKeypair) {
+        vaultAny._recoveryKeypair.privateKey.fill(0)
+        vaultAny._recoveryKeypair.publicKey.fill(0)
+        delete vaultAny._recoveryKeypair
+      }
       // lock() seals the vault, zeros the master key, and returns the persisted blob
       const persisted = await unlocked.vault.lock()
       await writeVaultFile(persisted)

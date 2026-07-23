@@ -174,10 +174,9 @@ export class Vault {
     const masterKey = await deriveKey(passphrase, new Uint8Array(salt), N)
 
     const derivedHash = keyVerificationHash(masterKey)
-    const hashMatch = timingSafeEqual(
-      Buffer.from(derivedHash),
-      Buffer.from(persisted.header.keyVerificationHash),
-    )
+    const derivedBuf = Buffer.from(derivedHash)
+    const storedBuf = Buffer.from(persisted.header.keyVerificationHash)
+    const hashMatch = derivedBuf.length === storedBuf.length && timingSafeEqual(derivedBuf, storedBuf)
     if (!hashMatch) {
       await zeroKey(masterKey)
       throw new Error('Incorrect passphrase')
@@ -206,15 +205,14 @@ export class Vault {
     this._appendAudit('vault-sealed', 'owner', null, null)
     const plaintext = JSON.stringify(this._state)
     const encrypted = await encryptString(plaintext, this._masterKey)
-    return { header: this._header, encrypted }
+    return { header: { ...this._header }, encrypted }
   }
 
   /** Seal and zero the master key — vault object becomes unusable. */
   async lock(): Promise<PersistedVault> {
     try {
-      const persisted = await this.seal()
       this._appendAudit('vault-locked', 'owner', null, null)
-      return persisted
+      return await this.seal()
     } finally {
       await zeroKey(this._masterKey)
       this._locked = true

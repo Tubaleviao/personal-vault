@@ -17,7 +17,12 @@ export default function Unlock({ onUnlocked }: Props) {
   const [passphrase, setPassphrase] = useState('')
   const [mnemonic, setMnemonic] = useState('')
   const [displayName, setDisplayName] = useState('')
-  const [newMnemonic, setNewMnemonic] = useState<string | null>(null)
+  // After vault creation, hold the mnemonic + persisted blob until the user
+  // acknowledges the phrase and clicks Continue.
+  const [pendingCreate, setPendingCreate] = useState<{
+    mnemonic: string
+    persisted: PersistedVault
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -42,16 +47,28 @@ export default function Unlock({ onUnlocked }: Props) {
       })
       const persisted = await vault.seal()
       await writeVaultFile(persisted)
-      setNewMnemonic(bundle.mnemonic)
-      // Re-open after user acknowledges mnemonic
-      const reopened = await VaultClass.open(persisted, passphrase)
-      onUnlocked(reopened, persisted)
+      // Show mnemonic before transitioning — user must click Continue.
+      setPendingCreate({ mnemonic: bundle.mnemonic, persisted })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
     }
-  }, [passphrase, displayName, busy, onUnlocked])
+  }, [passphrase, displayName, busy])
+
+  const handleContinueAfterMnemonic = useCallback(async () => {
+    if (!pendingCreate || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const vault = await VaultClass.open(pendingCreate.persisted, passphrase)
+      onUnlocked(vault, pendingCreate.persisted)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }, [pendingCreate, passphrase, busy, onUnlocked])
 
   const handleOpen = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,6 +97,28 @@ export default function Unlock({ onUnlocked }: Props) {
     return <div style={styles.center}><div style={styles.spinner}>Loading…</div></div>
   }
 
+  // Mnemonic acknowledgment step: shown after vault creation, before opening.
+  if (pendingCreate) {
+    return (
+      <div style={styles.center}>
+        <div style={styles.card}>
+          <h1 style={styles.title}>Personal Vault</h1>
+          <p style={styles.subtitle}>Your vault has been created</p>
+          <div style={styles.mnemonicBox}>
+            <p style={styles.mnemonicLabel}>
+              Write down your recovery phrase — it will not be shown again:
+            </p>
+            <p style={styles.mnemonicPhrase}>{pendingCreate.mnemonic}</p>
+          </div>
+          {error && <div style={styles.error}>{error}</div>}
+          <button style={styles.btn} onClick={() => { void handleContinueAfterMnemonic() }} disabled={busy}>
+            {busy ? 'Please wait…' : 'I have written it down — Continue'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={styles.center}>
       <div style={styles.card}>
@@ -87,13 +126,6 @@ export default function Unlock({ onUnlocked }: Props) {
         <p style={styles.subtitle}>
           {mode === 'create' ? 'Create a new vault' : 'Unlock your vault'}
         </p>
-
-        {newMnemonic && (
-          <div style={styles.mnemonicBox}>
-            <p style={styles.mnemonicLabel}>Write down your recovery phrase — it won't be shown again:</p>
-            <p style={styles.mnemonicPhrase}>{newMnemonic}</p>
-          </div>
-        )}
 
         <form
           onSubmit={mode === 'create' ? handleCreate : handleOpen}
