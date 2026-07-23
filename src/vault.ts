@@ -11,7 +11,7 @@
  *   masterKey is only kept in memory while the vault is unlocked.
  */
 
-import { randomUUID, createHash } from 'crypto'
+import { randomUUID, createHash, timingSafeEqual } from 'crypto'
 import {
   deriveKey, generateSalt, keyVerificationHash,
   encryptString, decryptString,
@@ -57,7 +57,7 @@ export interface Grant {
 export type AuditAction =
   | 'grant-created' | 'grant-revoked' | 'grant-expired'
   | 'claim-added' | 'claim-updated' | 'claim-deleted'
-  | 'vault-unlocked' | 'vault-locked'
+  | 'vault-unlocked' | 'vault-locked' | 'vault-sealed'
   | 'recovery-started' | 'recovery-completed'
   | 'bundle-accessed'
 
@@ -174,12 +174,21 @@ export class Vault {
     const masterKey = await deriveKey(passphrase, new Uint8Array(salt), N)
 
     const derivedHash = keyVerificationHash(masterKey)
-    if (derivedHash !== persisted.header.keyVerificationHash) {
+    const derivedBuf = Buffer.from(derivedHash)
+    const storedBuf = Buffer.from(persisted.header.keyVerificationHash)
+    const hashMatch = derivedBuf.length === storedBuf.length && timingSafeEqual(derivedBuf, storedBuf)
+    if (!hashMatch) {
       await zeroKey(masterKey)
       throw new Error('Incorrect passphrase')
     }
 
-    const plaintext = await decryptString(persisted.encrypted, masterKey)
+    let plaintext: string
+    try {
+      plaintext = await decryptString(persisted.encrypted, masterKey)
+    } catch (e) {
+      await zeroKey(masterKey)
+      throw e
+    }
     const state: VaultState = JSON.parse(plaintext) as VaultState
 
     const vault = new Vault(state, masterKey, persisted.header)
@@ -189,22 +198,25 @@ export class Vault {
 
   // ── Serialize / seal ───────────────────────────────────────────────────────
 
-  /** Encrypt and serialize the vault to a storable object. */
+  /** Encrypt and serialize the vault to a storable object without locking. */
   async seal(): Promise<PersistedVault> {
     this._assertUnlocked()
     this._header.sequenceNumber = (this._header.sequenceNumber ?? 0) + 1
-    this._appendAudit('vault-locked', 'owner', null, null)
+    this._appendAudit('vault-sealed', 'owner', null, null)
     const plaintext = JSON.stringify(this._state)
     const encrypted = await encryptString(plaintext, this._masterKey)
-    return { header: this._header, encrypted }
+    return { header: { ...this._header }, encrypted }
   }
 
   /** Seal and zero the master key — vault object becomes unusable. */
   async lock(): Promise<PersistedVault> {
-    const persisted = await this.seal()
-    await zeroKey(this._masterKey)
-    this._locked = true
-    return persisted
+    try {
+      this._appendAudit('vault-locked', 'owner', null, null)
+      return await this.seal()
+    } finally {
+      await zeroKey(this._masterKey)
+      this._locked = true
+    }
   }
 
   // ── Claims ─────────────────────────────────────────────────────────────────

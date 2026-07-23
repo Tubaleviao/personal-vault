@@ -22,10 +22,18 @@ export interface Env {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, PUT, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Vault-Nonce, X-Vault-Signature, X-Vault-PublicKey',
+}
+
+const MAX_VAULT_BYTES = 5 * 1024 * 1024  // 5 MB
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   })
 }
 
@@ -74,7 +82,7 @@ async function handleChallenge(req: Request, env: Env): Promise<Response> {
   await env.VAULT_KV.put(
     `nonce:${nonce}`,
     JSON.stringify({ ownerId, expiresAt }),
-    { expirationTtl: 90 },
+    { expirationTtl: 60 },
   )
 
   return json({ nonce })
@@ -155,7 +163,9 @@ async function handlePut(req: Request, env: Env, ownerId: string): Promise<Respo
 
   let body: unknown
   try {
-    body = await req.json()
+    const text = await req.text()
+    if (text.length > MAX_VAULT_BYTES) return err('Vault blob exceeds 5 MB limit', 413)
+    body = JSON.parse(text)
   } catch {
     return err('Invalid JSON body', 400)
   }
@@ -190,6 +200,10 @@ async function handleGet(req: Request, env: Env, ownerId: string): Promise<Respo
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS })
+    }
+
     const url = new URL(req.url)
     const parts = url.pathname.split('/').filter(Boolean)
 

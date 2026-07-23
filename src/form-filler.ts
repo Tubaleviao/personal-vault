@@ -201,7 +201,7 @@ export function buildFillMap(claims: Claim[]): FillMap {
       value,
       selectors: rule.selectors,
       autocompleteTokens: rule.autocompleteTokens,
-      badge: sourceToBadge(claim.source),
+      badge: sourceToBadge(claim.source, claim.verification),
     })
   }
 
@@ -328,8 +328,12 @@ function claimValueToString(claimType: string, value: unknown): string | null {
   return String(value)
 }
 
-function sourceToBadge(source: Claim['source']): 'self-attested' | 'verified' | 'imported' {
-  if (source === 'issuer-signed') return 'verified'
+function sourceToBadge(
+  source: Claim['source'],
+  verification: Claim['verification'],
+): 'self-attested' | 'verified' | 'imported' {
+  if (source === 'issuer-signed' && verification === 'verified') return 'verified'
+  if (source === 'issuer-signed') return 'imported'
   if (source === 'imported') return 'imported'
   return 'self-attested'
 }

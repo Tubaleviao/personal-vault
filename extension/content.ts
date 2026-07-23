@@ -284,7 +284,18 @@ function showCredentialSaveBanner(
 
   const title = document.createElement('div')
   const action = isUpdate ? 'Update saved password' : 'Save password'
-  title.innerHTML = `<strong style="color:#7dd3fc">Personal Vault</strong><br>${action} for ${hostname}?<br><span style="color:#94a3b8;font-size:11px">${username}</span>`
+  const titleStrong = document.createElement('strong')
+  titleStrong.style.color = '#7dd3fc'
+  titleStrong.textContent = 'Personal Vault'
+  const titleActionText = document.createTextNode(`\n${action} for ${hostname}?`)
+  const titleUser = document.createElement('span')
+  titleUser.style.cssText = 'color:#94a3b8;font-size:11px'
+  titleUser.textContent = username
+  title.appendChild(titleStrong)
+  title.appendChild(document.createElement('br'))
+  title.appendChild(titleActionText)
+  title.appendChild(document.createElement('br'))
+  title.appendChild(titleUser)
 
   const btnDismiss = document.createElement('button')
   btnDismiss.textContent = '✕'

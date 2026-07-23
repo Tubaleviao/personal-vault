@@ -47,6 +47,12 @@ const sharedConfig = {
 // We need a crypto shim because vault.ts imports { randomUUID, createHash } from 'crypto'.
 // In the extension we use WebCrypto for hashing and crypto.randomUUID() for IDs.
 const cryptoShim = `
+export const timingSafeEqual = (a, b) => {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i]
+  return diff === 0
+}
 export const randomUUID = () => crypto.randomUUID()
 export const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n))
 export const scryptSync = () => { throw new Error('scryptSync unavailable in browser') }
