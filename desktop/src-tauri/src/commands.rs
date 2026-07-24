@@ -55,9 +55,10 @@ pub fn vault_file_exists() -> Result<bool, String> {
 
 /// Install the native messaging host so the browser extension can reach this app's vault file.
 ///
-/// Called once on app startup. Copies the bundled binary to a stable location and writes
-/// the Chrome native-messaging manifest. Safe to call on every launch — exits early if
-/// already installed at the same version.
+/// Called on app startup. Copies the bundled binary to a stable location and writes the
+/// Chrome native-messaging manifest. On Linux/macOS the manifest is placed at the path
+/// Chrome scans; on Windows a registry key is also required (not yet implemented — returns
+/// an error on Windows rather than silently succeeding).
 #[tauri::command]
 pub fn install_native_host(app: tauri::AppHandle) -> Result<(), String> {
     // ── Locate bundled resources ─────────────────────────────────────────────
@@ -145,11 +146,10 @@ fn native_messaging_manifest_dir() -> Result<PathBuf, String> {
     }
     #[cfg(target_os = "windows")]
     {
-        // On Windows the manifest path is stored in the registry; we write to a temp
-        // location and add the registry key so Chrome finds it.
-        // For now, return a user-local path and note that registry write is TODO.
-        Ok(dirs_next::data_local_dir()
-            .ok_or_else(|| "Could not determine local data dir".to_string())?
-            .join("personal-vault/NativeMessagingHosts"))
+        // Chrome on Windows locates native messaging hosts via a registry key under
+        // HKCU\Software\Google\Chrome\NativeMessagingHosts\<name>.
+        // Writing that key requires the winreg crate, which is not yet a dependency.
+        Err("Native host auto-install is not yet supported on Windows. \
+             Please register com.personal_vault.json in the registry manually.".to_string())
     }
 }

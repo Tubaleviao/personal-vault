@@ -256,7 +256,12 @@ createForm.addEventListener('submit', async e => {
 
   createPassphrase.value = ''
   createPassphraseConfirm.value = ''
-  showMnemonicPanel(res.mnemonic!)
+  if (!res.mnemonic) {
+    createErrorMsg.textContent = 'Vault created but recovery phrase unavailable'
+    createErrorMsg.style.display = 'block'
+    return
+  }
+  showMnemonicPanel(res.mnemonic)
 })
 
 copyMnemonicBtn.addEventListener('click', () => {

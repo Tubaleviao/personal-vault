@@ -418,7 +418,8 @@ async function handleMessage(
       .find(e => e.username === message.username)
 
     if (existing) {
-      const existingClaim = session.vault.getClaim(existing.claimId)
+      let existingClaim
+      try { existingClaim = session.vault.getClaim(existing.claimId) } catch { sendResponse(null); return }
       const existingValue = existingClaim.value as CredentialValue
       if (existingValue.password === message.password) { sendResponse(null); return }
       sendResponse({ type: 'CREDENTIAL_SAVE_PROMPT', username: message.username, existingClaimId: existing.claimId })
@@ -437,7 +438,8 @@ async function handleMessage(
     }
 
     if (message.existingClaimId) {
-      const target = session.vault.getClaim(message.existingClaimId)
+      let target
+      try { target = session.vault.getClaim(message.existingClaimId) } catch { sendResponse(null); return }
       if (target.type !== CREDENTIAL_CLAIM_TYPE) { sendResponse(null); return }
       session.vault.updateClaim(message.existingClaimId, { value })
     } else {

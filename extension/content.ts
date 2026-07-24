@@ -373,7 +373,6 @@ async function main() {
   // ── Identity field filling ────────────────────────────────────────────────
 
   const fields = detectFields()
-  const loginForm = detectLoginForm()
   if (fields.length > 0) {
     const msg: MsgFormDetected = { type: 'FORM_DETECTED', origin, detectedFields: fields }
     const response = await chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>(msg)
@@ -439,7 +438,6 @@ function resubmitForm(form: HTMLFormElement) {
 
 function sendCredentialSubmit(username: string, password: string, form?: HTMLFormElement) {
   const origin = window.location.origin
-  credentialPromptSuppressed = true
   chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
     type: 'CREDENTIAL_SUBMIT',
     origin,
@@ -447,11 +445,12 @@ function sendCredentialSubmit(username: string, password: string, form?: HTMLFor
     password,
   }).then(resp => {
     if (resp?.type === 'CREDENTIAL_SAVE_PROMPT') {
+      credentialPromptSuppressed = true
       showCredentialSaveBanner(resp.username, origin, password, resp.existingClaimId, form)
     } else if (form) {
       resubmitForm(form)
     }
-  }).catch((err) => {
+  }).catch(() => {
     if (form) resubmitForm(form)
   })
 }
