@@ -13,7 +13,7 @@
  */
 
 import esbuild from 'esbuild'
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 const watch = process.argv.includes('--watch')
@@ -110,6 +110,13 @@ const ctx = await esbuild.context({
 // Copy static assets
 copyFileSync('extension/manifest.json', join(outdir, 'manifest.json'))
 copyFileSync('extension/popup/index.html', join(outdir, 'popup/index.html'))
+
+// Copy icons
+const iconsDir = join(outdir, 'icons')
+mkdirSync(iconsDir, { recursive: true })
+for (const file of readdirSync('extension/icons')) {
+  copyFileSync(join('extension/icons', file), join(iconsDir, file))
+}
 
 if (watch) {
   await ctx.watch()
