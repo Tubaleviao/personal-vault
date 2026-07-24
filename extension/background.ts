@@ -128,6 +128,7 @@ async function saveVaultBlob(blob: PersistedVault): Promise<void> {
   if (await useNativeHost()) {
     try { await nativeWriteVault(blob); return } catch {
       _nativeHostAvailable = null
+      _selectedVaultSource = 'local'
     }
   }
   await chrome.storage.local.set({ vault: blob })
@@ -255,20 +256,27 @@ async function handleMessage(
     // Check each backend independently so we can route creation to a free slot.
     const nativeAvail = await useNativeHost()
     let nativeHasVault = false
+    let nativeProbeOk = false
     if (nativeAvail) {
-      try { nativeHasVault = !!(await nativeReadVault()) } catch { /* unreachable */ }
+      try {
+        nativeHasVault = !!(await nativeReadVault())
+        nativeProbeOk = true
+      } catch { /* treat as occupied — clobbering an unread vault is data loss */ }
     }
     const localResult = await chrome.storage.local.get('vault')
     const localHasVault = !!(localResult['vault'])
 
-    // Prefer native when available and free; fall back to local.
+    // Prefer native when available and confirmed empty; fall back to local.
     let targetSource: 'native' | 'local'
-    if (nativeAvail && !nativeHasVault) {
+    if (nativeAvail && nativeProbeOk && !nativeHasVault) {
       targetSource = 'native'
     } else if (!localHasVault) {
       targetSource = 'local'
     } else {
-      sendResponse({ type: 'CREATE_RESULT', ok: false, error: 'Both storage backends already have a vault. Use the vault picker to select one to unlock.' })
+      const error = (nativeAvail && nativeProbeOk && nativeHasVault && localHasVault)
+        ? 'Both storage backends already have a vault. Use the vault picker to select one to unlock.'
+        : 'A vault already exists. Unlock it instead.'
+      sendResponse({ type: 'CREATE_RESULT', ok: false, error })
       return
     }
 
@@ -314,7 +322,6 @@ async function handleMessage(
       session.vault.lock().catch(() => { /* best effort */ })
       session = null
     }
-    _selectedVaultSource = null
     sendResponse(null)
     return
   }
