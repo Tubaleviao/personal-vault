@@ -4,3 +4,4 @@ dist/
 .quoin-manifest.json
 crypto-shim.js
 extension/crypto-shim.js
+desktop/src-tauri/resources/

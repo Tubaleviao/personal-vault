@@ -83,28 +83,23 @@ export const createHash = (algo) => {
 `
 writeFileSync('crypto-shim.js', cryptoShim)
 
-const builds = [
-  {
-    entryPoints: ['extension/background.ts'],
-    outfile: join(outdir, 'background.js'),
-  },
-  {
-    entryPoints: ['extension/content.ts'],
-    outfile: join(outdir, 'content.js'),
-    // Content scripts can't use top-level await in all contexts; use iife
-    format: 'iife',
-  },
-  {
-    entryPoints: ['extension/popup/popup.ts'],
-    outfile: join(outdir, 'popup/popup.js'),
-  },
-]
-
-const ctx = await esbuild.context({
+// background + popup share vault code via ESM chunks (code splitting)
+const esmCtx = await esbuild.context({
   ...sharedConfig,
-  entryPoints: builds.flatMap(b => b.entryPoints),
+  entryPoints: ['extension/background.ts', 'extension/popup/popup.ts'],
   outdir,
-  splitting: true, // share vault code between background + popup
+  splitting: true,
+  format: 'esm',
+})
+
+// content script must be a self-contained IIFE — no import statements allowed
+// in classic scripts injected by the extension manifest
+const iifeCtx = await esbuild.context({
+  ...sharedConfig,
+  entryPoints: ['extension/content.ts'],
+  outfile: join(outdir, 'content.js'),
+  splitting: false,
+  format: 'iife',
 })
 
 // Copy static assets
@@ -119,10 +114,10 @@ for (const file of readdirSync('extension/icons')) {
 }
 
 if (watch) {
-  await ctx.watch()
+  await Promise.all([esmCtx.watch(), iifeCtx.watch()])
   console.log('Watching for changes...')
 } else {
-  await ctx.rebuild()
-  await ctx.dispose()
+  await Promise.all([esmCtx.rebuild(), iifeCtx.rebuild()])
+  await Promise.all([esmCtx.dispose(), iifeCtx.dispose()])
   console.log('Extension built to', outdir)
 }

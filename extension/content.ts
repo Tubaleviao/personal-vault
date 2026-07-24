@@ -105,7 +105,7 @@ function showApprovalPrompt(claimTypes: string[], onApprove: (types: string[], p
   const banner = document.createElement('div')
   banner.id = '__pvault_banner'
   banner.setAttribute('style', [
-    'position:fixed', 'bottom:16px', 'right:16px', 'z-index:2147483647',
+    'position:fixed', 'top:16px', 'right:16px', 'z-index:2147483647',
     'background:#1e293b', 'color:#f1f5f9', 'border-radius:8px',
     'padding:14px 18px', 'font-family:system-ui,sans-serif', 'font-size:13px',
     'box-shadow:0 4px 24px rgba(0,0,0,.4)', 'max-width:320px', 'line-height:1.5',
@@ -150,7 +150,7 @@ function showApprovalPrompt(claimTypes: string[], onApprove: (types: string[], p
 function showFillConfirmation(count: number) {
   const toast = document.createElement('div')
   toast.setAttribute('style', [
-    'position:fixed', 'bottom:16px', 'right:16px', 'z-index:2147483647',
+    'position:fixed', 'top:16px', 'right:16px', 'z-index:2147483647',
     'background:#16a34a', 'color:#fff', 'border-radius:8px',
     'padding:10px 16px', 'font-family:system-ui,sans-serif', 'font-size:13px',
     'box-shadow:0 4px 16px rgba(0,0,0,.3)',
@@ -206,7 +206,7 @@ function showCredentialFillBanner(credentials: CredentialEntry[], loginForm: Log
   const banner = document.createElement('div')
   banner.id = '__pvault_cred_banner'
   banner.setAttribute('style', [
-    'position:fixed', 'bottom:16px', 'right:16px', 'z-index:2147483647',
+    'position:fixed', 'top:16px', 'right:16px', 'z-index:2147483647',
     'background:#1e293b', 'color:#f1f5f9', 'border-radius:8px',
     'padding:14px 18px', 'font-family:system-ui,sans-serif', 'font-size:13px',
     'box-shadow:0 4px 24px rgba(0,0,0,.4)', 'max-width:340px', 'line-height:1.5',
@@ -264,7 +264,7 @@ function showCredentialSaveBanner(
   origin: string,
   password: string,
   existingClaimId: string | undefined,
-  form: HTMLFormElement,
+  form?: HTMLFormElement,
 ) {
   if (credentialBanner) { credentialBanner.remove(); credentialBanner = null }
 
@@ -273,7 +273,7 @@ function showCredentialSaveBanner(
   const banner = document.createElement('div')
   banner.id = '__pvault_cred_save_banner'
   banner.setAttribute('style', [
-    'position:fixed', 'bottom:16px', 'right:16px', 'z-index:2147483647',
+    'position:fixed', 'top:16px', 'right:16px', 'z-index:2147483647',
     'background:#1e293b', 'color:#f1f5f9', 'border-radius:8px',
     'padding:14px 18px', 'font-family:system-ui,sans-serif', 'font-size:13px',
     'box-shadow:0 4px 24px rgba(0,0,0,.4)', 'max-width:340px', 'line-height:1.5',
@@ -304,7 +304,7 @@ function showCredentialSaveBanner(
     banner.remove()
     credentialBanner = null
     chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({ type: 'CREDENTIAL_SAVE_DENIED' }).catch(() => { /* ignore */ })
-    resubmitForm(form)
+    if (form) resubmitForm(form)
   }
 
   header.appendChild(title)
@@ -327,7 +327,7 @@ function showCredentialSaveBanner(
       password,
       existingClaimId,
     }).catch(() => { /* ignore */ })
-    resubmitForm(form)
+    if (form) resubmitForm(form)
   }
 
   const btnNotNow = document.createElement('button')
@@ -337,7 +337,7 @@ function showCredentialSaveBanner(
     banner.remove()
     credentialBanner = null
     chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({ type: 'CREDENTIAL_SAVE_DENIED' }).catch(() => { /* ignore */ })
-    resubmitForm(form)
+    if (form) resubmitForm(form)
   }
 
   row.appendChild(btnSave)
@@ -363,6 +363,9 @@ function applyCredentialFill(username: string, password: string, loginForm: Logi
 
 // Holds the detected login form so submit handler can reference the elements
 let activeLoginForm: LoginForm | null = null
+// Prevents re-prompting after the user has filled or dismissed credentials.
+// Reset only when the login form disappears (modal closed / page navigated).
+let credentialPromptSuppressed = false
 
 async function main() {
   const origin = window.location.origin
@@ -403,15 +406,18 @@ async function main() {
 
   // ── Credential fill detection ─────────────────────────────────────────────
 
-  const loginForm = detectLoginForm()
-  if (loginForm) {
-    activeLoginForm = loginForm
-    const credResp = await chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
-      type: 'CREDENTIAL_FORM_DETECTED',
-      origin,
-    })
-    if (credResp?.type === 'CREDENTIAL_FILL_PROMPT') {
-      showCredentialFillBanner(credResp.credentials, loginForm)
+  const loginFormDetected = detectLoginForm()
+  if (loginFormDetected) {
+    activeLoginForm = loginFormDetected
+    if (!credentialPromptSuppressed) {
+      const credResp = await chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
+        type: 'CREDENTIAL_FORM_DETECTED',
+        origin,
+      })
+      if (credResp?.type === 'CREDENTIAL_FILL_PROMPT') {
+        credentialPromptSuppressed = true
+        showCredentialFillBanner(credResp.credentials, loginFormDetected)
+      }
     }
   }
 }
@@ -430,22 +436,7 @@ function resubmitForm(form: HTMLFormElement) {
   }
 }
 
-document.addEventListener('submit', (event: Event) => {
-  if (resubmitting) return
-  const form = event.target as HTMLFormElement | null
-  if (!form || !activeLoginForm) return
-
-  const { passwordEl, usernameEl } = activeLoginForm
-  // Only intercept if the submitted form contains the detected password field
-  if (!form.contains(passwordEl)) return
-
-  const password = passwordEl.value
-  const username = usernameEl?.value ?? ''
-  if (!password) return
-
-  // Prevent navigation so the async flow can complete and show the banner.
-  event.preventDefault()
-
+function sendCredentialSubmit(username: string, password: string, form?: HTMLFormElement) {
   const origin = window.location.origin
   chrome.runtime.sendMessage<ContentToBackground, BackgroundToContent>({
     type: 'CREDENTIAL_SUBMIT',
@@ -454,12 +445,79 @@ document.addEventListener('submit', (event: Event) => {
     password,
   }).then(resp => {
     if (resp?.type === 'CREDENTIAL_SAVE_PROMPT') {
+      credentialPromptSuppressed = true
       showCredentialSaveBanner(resp.username, origin, password, resp.existingClaimId, form)
-    } else {
-      // No prompt needed (password unchanged or vault locked) — proceed with submit
+    } else if (form) {
       resubmitForm(form)
     }
-  }).catch(() => { resubmitForm(form) })
+  }).catch(() => {
+    if (form) resubmitForm(form)
+  })
+}
+
+// Native form submit (non-AJAX sites)
+document.addEventListener('submit', (event: Event) => {
+  if (resubmitting) return
+  const form = event.target as HTMLFormElement | null
+  if (!form || !activeLoginForm) return
+
+  const { passwordEl, usernameEl } = activeLoginForm
+  if (!form.contains(passwordEl)) return
+
+  const password = passwordEl.value
+  const username = usernameEl?.value ?? ''
+  if (!password) return
+
+  // Cancel pending AJAX capture — native submit takes over
+  if (ajaxCaptureTimer !== null) {
+    clearTimeout(ajaxCaptureTimer)
+    ajaxCaptureTimer = null
+  }
+
+  // Prevent navigation so the async flow can complete and show the banner.
+  event.preventDefault()
+  sendCredentialSubmit(username, password, form)
+}, { capture: true })
+
+// AJAX login detection: watch for clicks on submit-like buttons, snapshot the
+// field values immediately (before the site's handler can clear them), then
+// fire after a short delay — cancelled if a native submit event fires first.
+let ajaxCaptureTimer: ReturnType<typeof setTimeout> | null = null
+
+document.addEventListener('click', (event: MouseEvent) => {
+  const target = event.target as HTMLElement | null
+  if (!target) return
+
+  // Match <button type="submit">, <button> (default type is submit), and
+  // <input type="submit"> that are inside or near the detected login form.
+  const isSubmitLike = !!(
+    target.matches('button:not([type="button"]):not([type="reset"])') ||
+    target.matches('input[type="submit"]') ||
+    target.closest('button:not([type="button"]):not([type="reset"])')
+  )
+  if (!isSubmitLike) return
+
+  // Use the pre-detected form if available; otherwise scan the DOM now.
+  // This handles modals that opened after main() ran.
+  const loginForm = activeLoginForm ?? detectLoginForm()
+  if (!loginForm) return
+  activeLoginForm = loginForm
+
+  const { passwordEl, usernameEl } = loginForm
+  const password = passwordEl.value
+  const username = usernameEl?.value ?? ''
+  if (!password) return
+
+  // Snapshot values now — the site's handler may clear them synchronously
+  const capturedPassword = password
+  const capturedUsername = username
+
+  if (ajaxCaptureTimer !== null) clearTimeout(ajaxCaptureTimer)
+
+  ajaxCaptureTimer = setTimeout(() => {
+    ajaxCaptureTimer = null
+    sendCredentialSubmit(capturedUsername, capturedPassword)
+  }, 300)
 }, { capture: true })
 
 // Run once at document_idle; re-run if the DOM mutates significantly (SPAs).
@@ -473,9 +531,21 @@ new MutationObserver(() => {
     const hasIdentityBanner = !!document.getElementById('__pvault_banner')
     const hasCredentialBanner = !!document.getElementById('__pvault_cred_banner') || !!document.getElementById('__pvault_cred_save_banner')
     if (hasIdentityBanner || hasCredentialBanner) return
-    // Only re-run if there's something to detect (avoids IPC churn on inert pages)
-    if (detectFields().length > 0 || detectLoginForm() !== null) {
+
+    // Re-run full detection. For login modals that open after page load this is
+    // the only opportunity to set activeLoginForm before the user types.
+    const loginNow = detectLoginForm()
+    const hadLoginForm = activeLoginForm !== null
+    if (loginNow && !hadLoginForm) {
+      // A login form just appeared (modal opened). Run main() to update
+      // activeLoginForm and check for saved credentials to offer.
+      main().catch(() => { /* ignore */ })
+    } else if (!loginNow && hadLoginForm) {
+      // Login form disappeared (modal closed / page navigated).
+      activeLoginForm = null
+      credentialPromptSuppressed = false
+    } else if (detectFields().length > 0) {
       main().catch(() => { /* ignore */ })
     }
-  }, 1500)
+  }, 500)
 }).observe(document.body, { childList: true, subtree: true })

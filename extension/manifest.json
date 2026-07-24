@@ -3,6 +3,7 @@
   "name": "Personal Vault Form Filler",
   "version": "0.1.0",
   "description": "Fill web forms from your personal vault. You approve per-site, per-field. No data is shared without your consent.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt2FJ/nLrREupO4PB6hklIJXhxNRQYqmvMs+PqhtPFV1/YPeJGVIt1Gf6Hf1rnO8F8R06n4s0pnjlLMMg9rsnmYUBVebRE8v0kbMY8DaUC+ryjESC6w//DTeG52R+8kT9XKynvJ1kYJyNyrWsE22yfFDJmBEat0E8L5eI6daFuHHTmgAcEAlZrOxk1MH+Uyrd7lt9D8NQbg4jQZG8VwBzSzM4Cq2zD+IPLcjtEX5M+XMZl2s47pBwlN+JLDUEVy5Zt0vfrdnaq0bZ07nVf00XpJZLOl/3cVnh81fkEn1KzDItyYlzJ+L2M6L7fAUhgnjpFQUMdDi3eax4n1kdIAJZGwIDAQAB",
 
   "permissions": [
     "storage",

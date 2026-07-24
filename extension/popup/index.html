@@ -31,13 +31,13 @@
     section { padding: 12px 16px }
     section h2 { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px }
 
-    #unlock-form { display: flex; flex-direction: column; gap: 8px }
-    #unlock-form input {
+    #unlock-form, #create-form { display: flex; flex-direction: column; gap: 8px }
+    #unlock-form input, #create-form input {
       background: #1e293b; border: 1px solid #334155; border-radius: 6px;
       color: #f1f5f9; font-size: 13px; padding: 8px 10px; outline: none;
       width: 100%;
     }
-    #unlock-form input:focus { border-color: #3b82f6 }
+    #unlock-form input:focus, #create-form input:focus { border-color: #3b82f6 }
     button {
       border: none; border-radius: 6px; cursor: pointer;
       font-size: 12px; font-weight: 500; padding: 7px 12px;
@@ -66,6 +66,17 @@
     #no-approvals { color: #475569; font-size: 12px; text-align: center; padding: 12px 0 }
     #lock-btn { margin-top: 12px; width: 100% }
 
+    #toggle-create { background: none; border: none; color: #475569; font-size: 11px; cursor: pointer; padding: 0; text-decoration: underline; margin-top: 4px; display: block }
+    #toggle-create:hover { color: #94a3b8 }
+    #create-view { display: none }
+    #mnemonic-display {
+      background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+      padding: 10px; font-family: monospace; font-size: 12px; color: #fde68a;
+      word-break: break-word; line-height: 1.6; margin-top: 8px;
+    }
+    #mnemonic-warning { color: #f87171; font-size: 11px; margin-top: 6px }
+    #copy-mnemonic-btn { margin-top: 8px; width: 100% }
+
     #native-badge {
       font-size: 10px; font-weight: 500; padding: 2px 6px; border-radius: 4px;
       background: #1e293b; color: #475569; white-space: nowrap;
@@ -81,15 +92,41 @@
     <span id="native-badge" title="Desktop app connection status">desktop</span>
   </header>
 
-  <!-- Unlock form (shown when vault is locked) -->
+  <!-- Unlock / Create form (shown when vault is locked) -->
   <section id="locked-view">
-    <h2>Unlock Vault</h2>
-    <form id="unlock-form" autocomplete="off">
-      <input type="password" id="passphrase" placeholder="Passphrase" autofocus>
-      <input type="password" id="mnemonic-input" placeholder="Recovery phrase (optional — needed for sync)">
-      <div id="error-msg"></div>
-      <button type="submit" class="btn-primary">Unlock</button>
-    </form>
+    <!-- Unlock form -->
+    <div id="unlock-view">
+      <h2>Unlock Vault</h2>
+      <form id="unlock-form" autocomplete="off">
+        <input type="password" id="passphrase" placeholder="Passphrase" autofocus>
+        <input type="password" id="mnemonic-input" placeholder="Recovery phrase (optional — needed for sync)">
+        <div id="error-msg"></div>
+        <button type="submit" class="btn-primary">Unlock</button>
+      </form>
+      <button id="toggle-create">No vault yet? Create one</button>
+    </div>
+
+    <!-- Create vault form -->
+    <div id="create-view">
+      <h2>Create New Vault</h2>
+      <form id="create-form" autocomplete="off">
+        <input type="password" id="create-passphrase" placeholder="Choose a passphrase">
+        <input type="password" id="create-passphrase-confirm" placeholder="Confirm passphrase">
+        <div id="create-error-msg" style="color:#f87171;font-size:12px;display:none"></div>
+        <button type="submit" class="btn-primary">Create vault</button>
+      </form>
+      <button id="toggle-unlock" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;margin-top:4px;display:block">Already have a vault? Unlock it</button>
+    </div>
+
+    <!-- Mnemonic reveal (shown once after vault creation) -->
+    <div id="mnemonic-view" style="display:none">
+      <h2>Recovery Phrase</h2>
+      <p style="color:#94a3b8;font-size:12px;margin-bottom:4px">Write these 12 words down and keep them safe. They cannot be shown again.</p>
+      <div id="mnemonic-display"></div>
+      <p id="mnemonic-warning">Store this phrase offline before continuing.</p>
+      <button id="copy-mnemonic-btn" class="btn-primary">Copy to clipboard</button>
+      <button id="mnemonic-done-btn" class="btn-primary" style="margin-top:6px;width:100%">I've saved it — continue</button>
+    </div>
   </section>
 
   <!-- Unlocked view -->
@@ -111,6 +148,6 @@
     <button id="lock-btn" class="btn-danger" style="margin-top:14px;width:100%">Lock vault</button>
   </section>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

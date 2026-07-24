@@ -140,6 +140,20 @@ export interface MsgLockVault {
   type: 'LOCK_VAULT'
 }
 
+/** Popup asks the background to create a brand-new vault. */
+export interface MsgCreateVault {
+  type: 'CREATE_VAULT'
+  passphrase: string
+}
+
+/** Response to a CREATE_VAULT request. On success carries the generated mnemonic. */
+export interface MsgCreateResult {
+  type: 'CREATE_RESULT'
+  ok: boolean
+  mnemonic?: string
+  error?: string
+}
+
 // ── Background → Popup ────────────────────────────────────────────────────────
 
 export interface MsgApprovalsListResult {
@@ -295,6 +309,7 @@ export type PopupToBackground =
   | MsgGetVaultStatus
   | MsgUnlockVault
   | MsgLockVault
+  | MsgCreateVault
   | MsgGetRelayConfig
   | MsgSetRelayConfig
   | MsgSyncVault
@@ -304,6 +319,7 @@ export type BackgroundToPopup =
   | MsgApprovalsListResult
   | MsgVaultStatus
   | MsgUnlockResult
+  | MsgCreateResult
   | MsgRelayConfig
   | MsgSyncResult
   | MsgNativeHostStatus

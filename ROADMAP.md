@@ -108,7 +108,7 @@ Once the desktop app is running, the browser extension can delegate vault I/O to
 - [x] Audit log viewer with chain-integrity badge (`screens/Audit.tsx`)
 - [x] Sync panel — relay URL config + manual sync trigger (`screens/Sync.tsx`)
 - [ ] Package and test on Linux, macOS, Windows (requires Rust + `cargo tauri build`)
-- [ ] (Follow-up) Native messaging host so the extension can delegate to the desktop app
+- [x] Native messaging host: auto-installed by the desktop app on first launch; extension ID stabilised via RSA key in `manifest.json` — no manual steps for users
 
 ---
 
@@ -119,6 +119,65 @@ Once the desktop app is running, the browser extension can delegate vault I/O to
 **Step 4.2 — 10 real users.** Friends/family in your wedge scenario. Watch them onboard without helping. The passphrase/recovery step is where consumer crypto products die — iterate there until a non-technical user succeeds unassisted.
 
 **Step 4.3 — One real consumer of the data.** Convince a single counterpart (a landlord, a clinic, an HR person, a community org) to accept a vault bundle instead of emailed PDFs. One real-world acceptance validates the model more than 100 users.
+
+---
+
+## Phase 3.5.1 — Vault Discovery & Selection
+
+Currently the extension and desktop app can each have separate vaults (one in `chrome.storage.local`, one in `vault.json`) with no way to reconcile them. This step fixes that with a proper vault picker.
+
+### What to build
+
+**Extension popup vault picker:**
+- On popup open, query both storage backends (native host + `chrome.storage.local`) for vault headers (unencrypted metadata — no passphrase needed)
+- If **no vaults found anywhere**: skip the unlock form entirely and go straight to the "Create new vault" view
+- If **exactly one vault found**: current behavior — show unlock form pre-pointed at that vault
+- If **multiple vaults found**: show a vault picker list (origin label, creation date from header) before the unlock form so the user can select which to unlock
+
+**Background changes:**
+- `discoverVaults()` — probe native host and `chrome.storage.local`, return an array of `{ source: 'native' | 'local', header: VaultHeader }` without decrypting
+- `SELECT_VAULT` message: popup tells background which source to load from; background caches the choice for the session
+- On `UNLOCK_VAULT`, use the selected source rather than the fixed priority order
+
+**Desktop app:**
+- Equivalent vault picker on the unlock screen: scan `data_local_dir()/personal-vault/` for `*.json` files that parse as valid `PersistedVault`, list them with header metadata, let the user pick before entering passphrase
+
+**Migration helper:**
+- After picking and unlocking a vault, if the other source also has a vault, offer a one-click "Merge into this vault" action that imports claims from the other vault (deduplicating by claim ID)
+
+### Build steps
+
+- [ ] `discoverVaults()` in background — headers only, no decryption
+- [ ] `SELECT_VAULT` / `GET_VAULT_LIST` messages in `messages.ts`
+- [ ] Popup: skip unlock form when no vaults exist, show picker when multiple exist
+- [ ] Desktop: vault picker on unlock screen
+- [ ] Migration helper: merge claims from secondary vault after unlock
+
+---
+
+## Phase 3.6 — Chrome Web Store Publishing
+
+Publishing to the Web Store gives the extension a permanent, public extension ID — different from the dev ID derived from the `key` in `manifest.json`.
+
+### Steps
+
+- [ ] **Create a Chrome Web Store developer account** ($5 one-time fee at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole))
+- [ ] **Build the extension for submission** — run `node extension/build.mjs`, then zip `extension/dist/`
+- [ ] **Submit for review** — upload the zip, fill in store listing (description, screenshots, privacy policy URL)
+- [ ] **After approval: update the extension ID**
+  - The Web Store assigns a new permanent ID (e.g. `abcdefghijklmnopabcdefghijklmnop`)
+  - Remove the `"key"` field from `extension/manifest.json` (the Web Store manages the key; keeping it causes a submission error)
+  - Update `native-host/com.personal_vault.json` → replace `allowed_origins` with the new store ID
+  - Update `install_native_host()` in `desktop/src-tauri/src/commands.rs` if the manifest is embedded rather than read from the bundle
+  - Run `./desktop/build-native-host.sh` to re-stage the updated manifest, then cut a new desktop app release so existing users get the updated native host manifest automatically on next launch
+- [ ] **Keep the dev ID working alongside the store ID** during the transition by listing both origins in `com.personal_vault.json`:
+  ```json
+  "allowed_origins": [
+    "chrome-extension://fbhiaoeemhfdnjhilpdnpehdljhehffk/",
+    "chrome-extension://<STORE_ID>/"
+  ]
+  ```
+- [ ] **Auto-update policy** — once on the Web Store, Chrome auto-updates the extension; the desktop app must also be on an auto-update path (Tauri updater or platform package manager) so the native host manifest stays in sync
 
 ---
 
