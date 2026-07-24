@@ -119,11 +119,14 @@ async function discoverVaults(): Promise<VaultListEntry[]> {
 }
 
 async function saveVaultBlob(blob: PersistedVault): Promise<void> {
+  // Always write to the same backend that was selected for loading, so reads
+  // and writes can never land in different backends (split-brain).
+  if (_selectedVaultSource === 'local') {
+    await chrome.storage.local.set({ vault: blob })
+    return
+  }
   if (await useNativeHost()) {
     try { await nativeWriteVault(blob); return } catch {
-      // Native write failed — clear the cached availability so the next read
-      // also goes to chrome.storage, preventing a split-brain where reads and
-      // writes land in different backends.
       _nativeHostAvailable = null
     }
   }
@@ -249,9 +252,23 @@ async function handleMessage(
       return
     }
 
-    const existing = await loadVaultBlob()
-    if (existing) {
-      sendResponse({ type: 'CREATE_RESULT', ok: false, error: 'A vault already exists. Unlock it instead.' })
+    // Check each backend independently so we can route creation to a free slot.
+    const nativeAvail = await useNativeHost()
+    let nativeHasVault = false
+    if (nativeAvail) {
+      try { nativeHasVault = !!(await nativeReadVault()) } catch { /* unreachable */ }
+    }
+    const localResult = await chrome.storage.local.get('vault')
+    const localHasVault = !!(localResult['vault'])
+
+    // Prefer native when available and free; fall back to local.
+    let targetSource: 'native' | 'local'
+    if (nativeAvail && !nativeHasVault) {
+      targetSource = 'native'
+    } else if (!localHasVault) {
+      targetSource = 'local'
+    } else {
+      sendResponse({ type: 'CREATE_RESULT', ok: false, error: 'Both storage backends already have a vault. Use the vault picker to select one to unlock.' })
       return
     }
 
@@ -266,7 +283,15 @@ async function handleMessage(
       })
 
       const blob = await vault.seal()
-      await saveVaultBlob(blob)
+
+      // Write directly to the chosen backend — do not go through saveVaultBlob
+      // so we don't accidentally overwrite the existing vault in the other slot.
+      if (targetSource === 'native') {
+        await nativeWriteVault(blob)
+      } else {
+        await chrome.storage.local.set({ vault: blob })
+      }
+      _selectedVaultSource = targetSource
 
       session = {
         vault,
