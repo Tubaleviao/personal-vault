@@ -5,10 +5,6 @@ description = "Personal Data Vault — desktop host"
 authors = []
 edition = "2021"
 
-[lib]
-name = "personal_vault_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
 [[bin]]
 name = "personal-vault"
 path = "src/main.rs"

@@ -16,8 +16,7 @@
  */
 
 import * as bip39 from 'bip39'
-import { createHash } from 'crypto'
-import { keypairFromSeed } from './crypto'
+import { keypairFromSeed, sha256String } from './crypto'
 import type { Ed25519Keypair } from './crypto'
 
 export interface MnemonicBundle {
@@ -68,5 +67,5 @@ async function deriveBundleFromMnemonic(mnemonic: string): Promise<MnemonicBundl
 }
 
 function sha256Hex(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex')
+  return sha256String(text)
 }

@@ -15,8 +15,7 @@
  * proving the vault owner created it.
  */
 
-import { randomUUID } from 'crypto'
-import { encrypt, decrypt, sign, verify, to_base64, from_base64 } from './crypto'
+import { encrypt, decrypt, sign, verify, to_base64, from_base64, strToBase64url, base64urlToStr } from './crypto'
 import type { Claim, Grant } from './vault'
 
 // ── Public types ─────────────────────────────────────────────────────────────
@@ -80,7 +79,7 @@ export interface CreateBundleOptions {
  * Returns a ShareableBundle ready to serialise as a QR / link token.
  */
 export async function createBundle(opts: CreateBundleOptions): Promise<{ bundle: ShareableBundle; grant: Grant }> {
-  const grantId = randomUUID()
+  const grantId = globalThis.crypto.randomUUID()
   const now = new Date().toISOString()
   const ownerId = '(caller supplies in grant)'
 
@@ -141,7 +140,7 @@ export async function createBundle(opts: CreateBundleOptions): Promise<{ bundle:
  */
 export function encodeToken(bundle: ShareableBundle): string {
   const json = JSON.stringify(bundle)
-  return Buffer.from(json, 'utf8').toString('base64url')
+  return strToBase64url(json)
 }
 
 /**
@@ -149,7 +148,7 @@ export function encodeToken(bundle: ShareableBundle): string {
  */
 export function decodeToken(token: string): ShareableBundle | null {
   try {
-    const json = Buffer.from(token, 'base64url').toString('utf8')
+    const json = base64urlToStr(token)
     return JSON.parse(json) as ShareableBundle
   } catch {
     return null

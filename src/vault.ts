@@ -11,11 +11,11 @@
  *   masterKey is only kept in memory while the vault is unlocked.
  */
 
-import { randomUUID, createHash, timingSafeEqual } from 'crypto'
 import {
-  deriveKey, generateSalt, keyVerificationHash,
+  deriveKey, generateSalt, keyVerificationHash, sha256String,
   encryptString, decryptString,
   zeroKey, SCRYPT_N_DEFAULT, SCRYPT_N_V1, SCRYPT_N_MIN,
+  bytesToBase64url, base64urlToBytes,
 } from './crypto'
 import type { EncryptedBlob } from './crypto'
 
@@ -131,8 +131,8 @@ export class Vault {
     const salt = generateSalt()
     const masterKey = await deriveKey(options.passphrase, salt, SCRYPT_N_DEFAULT)
     const keyHash = keyVerificationHash(masterKey)
-    const saltB64 = Buffer.from(salt).toString('base64url')
-    const ownerId = randomUUID()
+    const saltB64 = bytesToBase64url(salt)
+    const ownerId = globalThis.crypto.randomUUID()
 
     const header: VaultHeader = {
       version: '1',
@@ -164,7 +164,7 @@ export class Vault {
   // ── Factory: open an existing vault ───────────────────────────────────────
 
   static async open(persisted: PersistedVault, passphrase: string): Promise<Vault> {
-    const salt = Buffer.from(persisted.header.salt, 'base64url')
+    const salt = base64urlToBytes(persisted.header.salt)
     // Fall back to legacy N for vaults created before scryptN was stored in the header.
     // deriveKey enforces SCRYPT_N_MIN <= N <= SCRYPT_N_MAX, rejecting crafted headers.
     const N = persisted.header.scryptN ?? SCRYPT_N_V1
@@ -174,9 +174,10 @@ export class Vault {
     const masterKey = await deriveKey(passphrase, new Uint8Array(salt), N)
 
     const derivedHash = keyVerificationHash(masterKey)
-    const derivedBuf = Buffer.from(derivedHash)
-    const storedBuf = Buffer.from(persisted.header.keyVerificationHash)
-    const hashMatch = derivedBuf.length === storedBuf.length && timingSafeEqual(derivedBuf, storedBuf)
+    const storedHash = persisted.header.keyVerificationHash
+    // Constant-time string comparison: both hashes are base64url-encoded SHA-256 digests (public).
+    const hashMatch = derivedHash.length === storedHash.length &&
+      [...derivedHash].reduce((acc, c, i) => acc | (c.charCodeAt(0) ^ storedHash.charCodeAt(i)), 0) === 0
     if (!hashMatch) {
       await zeroKey(masterKey)
       throw new Error('Incorrect passphrase')
@@ -225,7 +226,7 @@ export class Vault {
     this._assertUnlocked()
     const claim: Claim = {
       ...input,
-      id: randomUUID(),
+      id: globalThis.crypto.randomUUID(),
       ownerId: this._state.owner.id,
       issuedAt: new Date().toISOString(),
     }
@@ -331,12 +332,12 @@ export class Vault {
     const prev = log[log.length - 1] ?? null
     const prevHash = prev?.entryHash ?? null
 
-    const id = randomUUID()
+    const id = globalThis.crypto.randomUUID()
     const createdAt = new Date().toISOString()
     const ownerId = this._state.owner.id
 
     const canonical = JSON.stringify(sortKeys({ id, ownerId, grantId, action, actor, detail, prevHash, createdAt }))
-    const entryHash = createHash('sha256').update(canonical, 'utf8').digest('hex')
+    const entryHash = sha256String(canonical)
 
     log.push({ id, ownerId, grantId, action, actor, detail, prevHash, entryHash, createdAt })
   }
