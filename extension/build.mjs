@@ -40,6 +40,9 @@ const sharedConfig = {
   alias: {
     // Redirect Node built-ins to browser-compatible stubs
     'crypto': './crypto-shim.js',
+    // Force the CJS entry — the ESM entry (dist/modules-esm/) imports a
+    // non-existent libsodium.mjs and breaks esbuild's bundler.
+    'libsodium-wrappers': './node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js',
   },
   logLevel: 'info',
 }
