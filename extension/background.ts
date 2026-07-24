@@ -26,6 +26,7 @@ import type {
   ContentToBackground, BackgroundToContent,
   PopupToBackground, BackgroundToPopup,
   MsgFormDetected,
+  VaultListEntry,
 } from './messages'
 import type { SiteApproval } from '../src/form-filler'
 import {
@@ -45,6 +46,15 @@ import { isNativeHostAvailable, nativeReadVault, nativeWriteVault } from './nati
 
 /** null = not yet probed; true/false = cached result */
 let _nativeHostAvailable: boolean | null = null
+
+// ── Vault source selection ─────────────────────────────────────────────────────
+
+/**
+ * Which storage backend to use when loading the vault.
+ * null = auto (native if available, local otherwise).
+ * Reset to null on lock so each session starts with a fresh discovery.
+ */
+let _selectedVaultSource: 'native' | 'local' | null = null
 
 async function useNativeHost(): Promise<boolean> {
   if (_nativeHostAvailable === null) {
@@ -76,11 +86,36 @@ async function saveApprovals(approvals: SiteApproval[]): Promise<void> {
 }
 
 async function loadVaultBlob(): Promise<PersistedVault | null> {
+  if (_selectedVaultSource === 'local') {
+    const result = await chrome.storage.local.get('vault')
+    return (result['vault'] as PersistedVault | undefined) ?? null
+  }
   if (await useNativeHost()) {
     try { return await nativeReadVault() } catch { /* fall through to storage */ }
   }
   const result = await chrome.storage.local.get('vault')
   return (result['vault'] as PersistedVault | undefined) ?? null
+}
+
+/**
+ * Probe both storage backends and return vault headers without decrypting.
+ * Order: native first, local second.
+ */
+async function discoverVaults(): Promise<VaultListEntry[]> {
+  const vaults: VaultListEntry[] = []
+
+  if (await useNativeHost()) {
+    try {
+      const blob = await nativeReadVault()
+      if (blob?.header) vaults.push({ source: 'native', header: blob.header })
+    } catch { /* host reachable but no vault file */ }
+  }
+
+  const local = await chrome.storage.local.get('vault')
+  const localBlob = local['vault'] as PersistedVault | undefined
+  if (localBlob?.header) vaults.push({ source: 'local', header: localBlob.header })
+
+  return vaults
 }
 
 async function saveVaultBlob(blob: PersistedVault): Promise<void> {
@@ -254,6 +289,7 @@ async function handleMessage(
       session.vault.lock().catch(() => { /* best effort */ })
       session = null
     }
+    _selectedVaultSource = null
     sendResponse(null)
     return
   }
@@ -265,6 +301,7 @@ async function handleMessage(
       type: 'VAULT_STATUS',
       unlocked: session !== null,
       ownerDid: session?.ownerDid ?? null,
+      activeSource: session !== null ? (_selectedVaultSource ?? ((_nativeHostAvailable) ? 'native' : 'local')) : null,
     })
     return
   }
@@ -540,6 +577,64 @@ async function handleMessage(
       sendResponse({ type: 'SYNC_RESULT', ok: true, action: result.action, syncedAt })
     } catch (err) {
       sendResponse({ type: 'SYNC_RESULT', ok: false, error: String(err) })
+    }
+    return
+  }
+
+  if (message.type === 'GET_VAULT_LIST') {
+    const vaults = await discoverVaults()
+    sendResponse({ type: 'VAULT_LIST', vaults })
+    return
+  }
+
+  if (message.type === 'SELECT_VAULT') {
+    _selectedVaultSource = message.source
+    sendResponse(null)
+    return
+  }
+
+  if (message.type === 'MERGE_VAULT') {
+    if (!session) {
+      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: 'Vault is locked' })
+      return
+    }
+
+    let otherBlob: PersistedVault | null = null
+    try {
+      if (message.source === 'local') {
+        const result = await chrome.storage.local.get('vault')
+        otherBlob = (result['vault'] as PersistedVault | undefined) ?? null
+      } else {
+        otherBlob = await nativeReadVault()
+      }
+    } catch (err) {
+      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: `Could not read vault: ${err}` })
+      return
+    }
+
+    if (!otherBlob) {
+      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: 'No vault found at that source' })
+      return
+    }
+
+    try {
+      const other = await Vault.open(otherBlob, message.passphrase)
+      const otherClaims = other.listClaims()
+      other.lock().catch(() => { /* best effort */ })
+
+      let added = 0
+      for (const claim of otherClaims) {
+        const before = session.vault.listClaims().length
+        session.vault.importClaim(claim)
+        if (session.vault.listClaims().length > before) added++
+      }
+
+      const blob = await session.vault.seal()
+      await saveVaultBlob(blob)
+
+      sendResponse({ type: 'MERGE_RESULT', ok: true, added })
+    } catch (err) {
+      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: String(err) })
     }
     return
   }
