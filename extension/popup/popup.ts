@@ -37,6 +37,7 @@ const relayUrlInput = document.getElementById('relay-url') as HTMLInputElement
 const saveRelayBtn = document.getElementById('save-relay-btn')!
 const syncBtn = document.getElementById('sync-btn')!
 const syncStatus = document.getElementById('sync-status')!
+const nativeBadge = document.getElementById('native-badge')!
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -196,4 +197,19 @@ lockBtn.addEventListener('click', lockVault)
 saveRelayBtn.addEventListener('click', saveRelayUrl)
 syncBtn.addEventListener('click', syncNow)
 
+// Show whether the desktop native host is reachable
+async function updateNativeBadge() {
+  const res = await send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }) as { type: 'NATIVE_HOST_STATUS'; available: boolean } | null
+  if (res?.available) {
+    nativeBadge.textContent = 'desktop connected'
+    nativeBadge.classList.add('connected')
+    nativeBadge.title = 'Vault I/O routed through the desktop app'
+  } else {
+    nativeBadge.textContent = 'desktop offline'
+    nativeBadge.classList.remove('connected')
+    nativeBadge.title = 'Desktop app not detected — using browser storage'
+  }
+}
+
 init().catch(() => showLocked())
+updateNativeBadge().catch(() => { /* non-critical */ })

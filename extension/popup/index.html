@@ -65,6 +65,12 @@
 
     #no-approvals { color: #475569; font-size: 12px; text-align: center; padding: 12px 0 }
     #lock-btn { margin-top: 12px; width: 100% }
+
+    #native-badge {
+      font-size: 10px; font-weight: 500; padding: 2px 6px; border-radius: 4px;
+      background: #1e293b; color: #475569; white-space: nowrap;
+    }
+    #native-badge.connected { background: #14532d; color: #4ade80 }
   </style>
 </head>
 <body>
@@ -72,6 +78,7 @@
     <div id="status-dot"></div>
     <h1>Personal Vault</h1>
     <span id="did-short" style="color:#475569;font-size:11px"></span>
+    <span id="native-badge" title="Desktop app connection status">desktop</span>
   </header>
 
   <!-- Unlock form (shown when vault is locked) -->

@@ -35,6 +35,19 @@ import {
 import type { CredentialValue } from '../src/form-filler'
 import type { Vault, PersistedVault } from '../src/vault'
 import type { RelayConfig } from '../src/relay'
+import { isNativeHostAvailable, nativeReadVault, nativeWriteVault } from './nativeHost'
+
+// ── Native host availability (cached per service-worker lifetime) ──────────────
+
+/** null = not yet probed; true/false = cached result */
+let _nativeHostAvailable: boolean | null = null
+
+async function useNativeHost(): Promise<boolean> {
+  if (_nativeHostAvailable === null) {
+    _nativeHostAvailable = await isNativeHostAvailable()
+  }
+  return _nativeHostAvailable
+}
 
 // ── In-memory vault session ───────────────────────────────────────────────────
 
@@ -59,8 +72,23 @@ async function saveApprovals(approvals: SiteApproval[]): Promise<void> {
 }
 
 async function loadVaultBlob(): Promise<PersistedVault | null> {
+  if (await useNativeHost()) {
+    try { return await nativeReadVault() } catch { /* fall through to storage */ }
+  }
   const result = await chrome.storage.local.get('vault')
   return (result['vault'] as PersistedVault | undefined) ?? null
+}
+
+async function saveVaultBlob(blob: PersistedVault): Promise<void> {
+  if (await useNativeHost()) {
+    try { await nativeWriteVault(blob); return } catch {
+      // Native write failed — clear the cached availability so the next read
+      // also goes to chrome.storage, preventing a split-brain where reads and
+      // writes land in different backends.
+      _nativeHostAvailable = null
+    }
+  }
+  await chrome.storage.local.set({ vault: blob })
 }
 
 // ── Relay config helpers ──────────────────────────────────────────────────────
@@ -304,6 +332,8 @@ async function handleMessage(
           revokedAt: null,
         }
         session.vault.addGrant(grant)
+        const blob = await session.vault.seal()
+        await saveVaultBlob(blob)
       } catch { /* vault state error — approval still proceeds */ }
 
       const approvals = await loadApprovals()
@@ -381,7 +411,7 @@ async function handleMessage(
     }
 
     const blob = await session.vault.seal()
-    await chrome.storage.local.set({ vault: blob })
+    await saveVaultBlob(blob)
     sendResponse(null)
     return
   }
@@ -440,7 +470,7 @@ async function handleMessage(
     try {
       const { syncVault } = await import('../src/relay')
       const localBlob = await session.vault.seal()
-      await chrome.storage.local.set({ vault: localBlob })
+      await saveVaultBlob(localBlob)
 
       const relayConfig: RelayConfig = {
         url: relayStorage.relayUrl,
@@ -459,7 +489,7 @@ async function handleMessage(
       // in-memory session keeps the current state; the updated blob will be loaded
       // on next unlock.
       if (result.action === 'pulled') {
-        await chrome.storage.local.set({ vault: blob })
+        await saveVaultBlob(blob)
       }
 
       const syncedAt = new Date().toISOString()
@@ -469,6 +499,12 @@ async function handleMessage(
     } catch (err) {
       sendResponse({ type: 'SYNC_RESULT', ok: false, error: String(err) })
     }
+    return
+  }
+
+  if (message.type === 'GET_NATIVE_HOST_STATUS') {
+    const available = await useNativeHost()
+    sendResponse({ type: 'NATIVE_HOST_STATUS', available })
     return
   }
 

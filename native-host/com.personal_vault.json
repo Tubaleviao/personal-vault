@@ -1,0 +1,9 @@
+{
+  "name": "com.personal_vault",
+  "description": "Personal Vault native messaging host — vault file I/O bridge",
+  "path": "/usr/local/bin/personal-vault-native-host",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://EXTENSION_ID_PLACEHOLDER/"
+  ]
+}
