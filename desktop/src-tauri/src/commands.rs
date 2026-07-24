@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 
 fn vault_path() -> Result<PathBuf, String> {
@@ -22,13 +23,23 @@ pub fn read_vault_file() -> Result<Option<String>, String> {
 
 /// Write the sealed vault blob to the platform data directory.
 /// Creates the directory if it does not exist.
+/// Uses a write-to-tmp + rename pattern so a crash mid-write never corrupts vault.json.
 #[tauri::command]
 pub fn write_vault_file(blob: String) -> Result<(), String> {
     let path = vault_path()?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("Failed to create vault dir: {e}"))?;
     }
-    fs::write(&path, blob).map_err(|e| format!("Failed to write vault: {e}"))
+    let tmp_path = path.with_extension("json.tmp");
+    {
+        let mut file = fs::File::create(&tmp_path)
+            .map_err(|e| format!("Failed to create temp vault file: {e}"))?;
+        file.write_all(blob.as_bytes())
+            .map_err(|e| format!("Failed to write vault: {e}"))?;
+        file.sync_all()
+            .map_err(|e| format!("Failed to sync vault: {e}"))?;
+    }
+    fs::rename(&tmp_path, &path).map_err(|e| format!("Failed to replace vault file: {e}"))
 }
 
 /// Check whether a vault file exists (used on startup to decide create vs. open).

@@ -81,7 +81,12 @@ async function loadVaultBlob(): Promise<PersistedVault | null> {
 
 async function saveVaultBlob(blob: PersistedVault): Promise<void> {
   if (await useNativeHost()) {
-    try { await nativeWriteVault(blob); return } catch { /* fall through to storage */ }
+    try { await nativeWriteVault(blob); return } catch {
+      // Native write failed — clear the cached availability so the next read
+      // also goes to chrome.storage, preventing a split-brain where reads and
+      // writes land in different backends.
+      _nativeHostAvailable = null
+    }
   }
   await chrome.storage.local.set({ vault: blob })
 }
@@ -327,6 +332,8 @@ async function handleMessage(
           revokedAt: null,
         }
         session.vault.addGrant(grant)
+        const blob = await session.vault.seal()
+        await saveVaultBlob(blob)
       } catch { /* vault state error — approval still proceeds */ }
 
       const approvals = await loadApprovals()
