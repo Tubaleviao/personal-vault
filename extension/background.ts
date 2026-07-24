@@ -33,8 +33,12 @@ import {
   findCredentialsForOrigin, getCredentialById, CREDENTIAL_CLAIM_TYPE,
 } from '../src/form-filler'
 import type { CredentialValue } from '../src/form-filler'
-import type { Vault, PersistedVault } from '../src/vault'
+import { Vault } from '../src/vault'
+import type { PersistedVault } from '../src/vault'
+import { syncVault } from '../src/relay'
 import type { RelayConfig } from '../src/relay'
+import { generateMnemonicBundle, restoreFromMnemonic, verifyMnemonicCommitment } from '../src/recovery'
+import { didFromSeed } from '../src/did'
 import { isNativeHostAvailable, nativeReadVault, nativeWriteVault } from './nativeHost'
 
 // ── Native host availability (cached per service-worker lifetime) ──────────────
@@ -174,14 +178,12 @@ async function handleMessage(
     }
 
     try {
-      const { Vault } = await import('../src/vault')
       const vault = await Vault.open(blob, message.passphrase)
 
       let ownerPrivateKey = new Uint8Array(0)
       let ownerPublicKey = new Uint8Array(0)
 
       if (message.mnemonic) {
-        const { restoreFromMnemonic, verifyMnemonicCommitment } = await import('../src/recovery')
         const bundle = await restoreFromMnemonic(message.mnemonic)
         if (bundle) {
           if (!verifyMnemonicCommitment(message.mnemonic, vault.header.mnemonicCommitment)) {
@@ -202,6 +204,45 @@ async function handleMessage(
       sendResponse({ type: 'UNLOCK_RESULT', ok: true })
     } catch (err) {
       sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: String(err) })
+    }
+    return
+  }
+
+  if (message.type === 'CREATE_VAULT') {
+    if (!message.passphrase) {
+      sendResponse({ type: 'CREATE_RESULT', ok: false, error: 'No passphrase' })
+      return
+    }
+
+    const existing = await loadVaultBlob()
+    if (existing) {
+      sendResponse({ type: 'CREATE_RESULT', ok: false, error: 'A vault already exists. Unlock it instead.' })
+      return
+    }
+
+    try {
+      const bundle = await generateMnemonicBundle()
+      const didDoc = await didFromSeed(bundle.keypair.privateKey.slice(0, 32))
+
+      const vault = await Vault.create({
+        passphrase: message.passphrase,
+        did: didDoc.id,
+        mnemonicCommitment: bundle.mnemonicCommitment,
+      })
+
+      const blob = await vault.seal()
+      await saveVaultBlob(blob)
+
+      session = {
+        vault,
+        ownerDid: didDoc.id,
+        ownerPrivateKey: bundle.keypair.privateKey,
+        ownerPublicKey: bundle.keypair.publicKey,
+      }
+
+      sendResponse({ type: 'CREATE_RESULT', ok: true, mnemonic: bundle.mnemonic })
+    } catch (err) {
+      sendResponse({ type: 'CREATE_RESULT', ok: false, error: String(err) })
     }
     return
   }
@@ -468,7 +509,6 @@ async function handleMessage(
     }
 
     try {
-      const { syncVault } = await import('../src/relay')
       const localBlob = await session.vault.seal()
       await saveVaultBlob(localBlob)
 

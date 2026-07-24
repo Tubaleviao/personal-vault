@@ -39,6 +39,20 @@ const syncBtn = document.getElementById('sync-btn')!
 const syncStatus = document.getElementById('sync-status')!
 const nativeBadge = document.getElementById('native-badge')!
 
+// Create-vault UI
+const unlockPanel = document.getElementById('unlock-view')!
+const createPanel = document.getElementById('create-view')!
+const mnemonicPanel = document.getElementById('mnemonic-view')!
+const toggleCreateBtn = document.getElementById('toggle-create')!
+const toggleUnlockBtn = document.getElementById('toggle-unlock')!
+const createForm = document.getElementById('create-form') as HTMLFormElement
+const createPassphrase = document.getElementById('create-passphrase') as HTMLInputElement
+const createPassphraseConfirm = document.getElementById('create-passphrase-confirm') as HTMLInputElement
+const createErrorMsg = document.getElementById('create-error-msg')!
+const mnemonicDisplay = document.getElementById('mnemonic-display')!
+const copyMnemonicBtn = document.getElementById('copy-mnemonic-btn')!
+const mnemonicDoneBtn = document.getElementById('mnemonic-done-btn')!
+
 // ── Render ────────────────────────────────────────────────────────────────────
 
 function renderApprovals(approvals: SiteApproval[]) {
@@ -171,6 +185,27 @@ async function init() {
   if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 }
 
+// ── Create-vault flow ─────────────────────────────────────────────────────────
+
+function showUnlockPanel() {
+  unlockPanel.style.display = 'block'
+  createPanel.style.display = 'none'
+  mnemonicPanel.style.display = 'none'
+}
+
+function showCreatePanel() {
+  unlockPanel.style.display = 'none'
+  createPanel.style.display = 'block'
+  mnemonicPanel.style.display = 'none'
+}
+
+function showMnemonicPanel(mnemonic: string) {
+  unlockPanel.style.display = 'none'
+  createPanel.style.display = 'none'
+  mnemonicPanel.style.display = 'block'
+  mnemonicDisplay.textContent = mnemonic
+}
+
 // ── Events ────────────────────────────────────────────────────────────────────
 
 unlockForm.addEventListener('submit', async e => {
@@ -196,6 +231,43 @@ unlockForm.addEventListener('submit', async e => {
 lockBtn.addEventListener('click', lockVault)
 saveRelayBtn.addEventListener('click', saveRelayUrl)
 syncBtn.addEventListener('click', syncNow)
+
+toggleCreateBtn.addEventListener('click', showCreatePanel)
+toggleUnlockBtn.addEventListener('click', showUnlockPanel)
+
+createForm.addEventListener('submit', async e => {
+  e.preventDefault()
+  createErrorMsg.style.display = 'none'
+  const passphrase = createPassphrase.value
+  const confirm = createPassphraseConfirm.value
+  if (!passphrase) return
+  if (passphrase !== confirm) {
+    createErrorMsg.textContent = 'Passphrases do not match'
+    createErrorMsg.style.display = 'block'
+    return
+  }
+
+  const res = await send<BackgroundToPopup>({ type: 'CREATE_VAULT', passphrase }) as { type: 'CREATE_RESULT'; ok: boolean; mnemonic?: string; error?: string } | null
+  if (!res?.ok) {
+    createErrorMsg.textContent = res?.error ?? 'Failed to create vault'
+    createErrorMsg.style.display = 'block'
+    return
+  }
+
+  createPassphrase.value = ''
+  createPassphraseConfirm.value = ''
+  showMnemonicPanel(res.mnemonic!)
+})
+
+copyMnemonicBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(mnemonicDisplay.textContent ?? '').catch(() => { /* non-critical */ })
+  copyMnemonicBtn.textContent = 'Copied!'
+  setTimeout(() => { copyMnemonicBtn.textContent = 'Copy to clipboard' }, 2000)
+})
+
+mnemonicDoneBtn.addEventListener('click', () => {
+  init().catch(() => showLocked())
+})
 
 // Show whether the desktop native host is reachable
 async function updateNativeBadge() {
