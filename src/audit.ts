@@ -14,7 +14,7 @@
  *   - formatAuditLog() — human-readable display for the audit screen
  */
 
-import { createHash, randomUUID } from 'crypto'
+import { sha256String } from './crypto'
 import type { AuditEntry, AuditAction } from './vault'
 
 export type { AuditEntry, AuditAction }
@@ -34,7 +34,7 @@ export interface NewAuditEntry {
  * Pass the last entry in the chain as `prev`, or null for the genesis entry.
  */
 export function buildEntry(input: NewAuditEntry, prev: AuditEntry | null): AuditEntry {
-  const id = randomUUID()
+  const id = globalThis.crypto.randomUUID()
   const createdAt = new Date().toISOString()
   const prevHash = prev ? prev.entryHash : null
 
@@ -150,5 +150,5 @@ function sortKeys(val: unknown): unknown {
 }
 
 function sha256Hex(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex')
+  return sha256String(text)
 }

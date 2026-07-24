@@ -15,7 +15,6 @@
  *   revokeGrant()     — delegates to Vault.revokeGrant() after validation
  */
 
-import { randomUUID } from 'crypto'
 import { signWithDID, verifyWithDID } from './did'
 import { createBundle, encodeToken } from './sharing'
 import type { Vault, Grant, Claim } from './vault'
@@ -46,7 +45,7 @@ export async function createGrant(
   ownerDid: string,
   ownerPrivateKey: Uint8Array,
 ): Promise<SignedGrantResult> {
-  const id = randomUUID()
+  const id = globalThis.crypto.randomUUID()
   const createdAt = new Date().toISOString()
 
   const canonical = canonicalGrantPayload({

@@ -18,9 +18,9 @@
  *   - SD-JWT framing helper: produce a minimal SD-JWT header for selective disclosure
  */
 
-import { createHash, randomBytes } from 'crypto'
-import { generateKeypair, keypairFromSeed, sign, verify, from_base64 } from './crypto'
-import type { Ed25519Keypair } from './crypto'
+import { generateKeypair, keypairFromSeed, sign, verify, from_base64, bytesToBase64url, strToBase64url, base64urlToStr } from './crypto'
+import { sha256 } from '@noble/hashes/sha256'
+import { randomBytes, concatBytes, bytesToHex } from '@noble/hashes/utils'
 
 // ── Multibase / multicodec constants ─────────────────────────────────────────
 
@@ -179,9 +179,9 @@ export async function verifyVCProof(vc: RawVC): Promise<boolean> {
   const canonicalProofOptions = canonicalJson(proofOptions)
 
   // Signing input: SHA-256(proofOptions) || SHA-256(document) concatenated
-  const hashProofOptions = createHash('sha256').update(canonicalProofOptions).digest()
-  const hashDoc = createHash('sha256').update(canonicalDoc).digest()
-  const signingInput = Buffer.concat([hashProofOptions, hashDoc])
+  const hashProofOptions = sha256(new TextEncoder().encode(canonicalProofOptions))
+  const hashDoc = sha256(new TextEncoder().encode(canonicalDoc))
+  const signingInput = concatBytes(hashProofOptions, hashDoc)
 
   // Decode signature: base58btc ('z' prefix) or base64url
   let sigBytes: Uint8Array
@@ -195,7 +195,7 @@ export async function verifyVCProof(vc: RawVC): Promise<boolean> {
     return false
   }
 
-  return verify(signingInput, Buffer.from(sigBytes).toString('base64url'), publicKey)
+  return verify(signingInput, bytesToBase64url(sigBytes), publicKey)
 }
 
 /** Deterministic canonical JSON: keys sorted recursively. */
@@ -293,13 +293,13 @@ export async function issueSDJWT(
   const sdDigests: string[] = []
 
   for (const claim of claims) {
-    const salt = randomBytes(16).toString('base64url')
+    const salt = bytesToBase64url(randomBytes(16))
     const disclosureJson = JSON.stringify([salt, claim.name, claim.value])
-    const disclosure = Buffer.from(disclosureJson).toString('base64url')
+    const disclosure = strToBase64url(disclosureJson)
     disclosures.push(disclosure)
 
     // _sd digest = base64url(sha256(disclosure))
-    const digest = createHash('sha256').update(disclosure).digest('base64url')
+    const digest = bytesToBase64url(sha256(new TextEncoder().encode(disclosure)))
     sdDigests.push(digest)
   }
 
@@ -313,8 +313,8 @@ export async function issueSDJWT(
   if (options.expiresAt !== undefined) payloadObj['exp'] = options.expiresAt
   if (options.subject !== undefined) payloadObj['sub'] = options.subject
 
-  const header = Buffer.from(JSON.stringify(headerObj)).toString('base64url')
-  const payload = Buffer.from(JSON.stringify(payloadObj)).toString('base64url')
+  const header = strToBase64url(JSON.stringify(headerObj))
+  const payload = strToBase64url(JSON.stringify(payloadObj))
   const signingInput = `${header}.${payload}`
   const signature = await sign(new TextEncoder().encode(signingInput), privateKey)
 
@@ -355,7 +355,7 @@ export async function verifySDJWT(
 
   let payloadObj: Record<string, unknown>
   try {
-    payloadObj = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'))
+    payloadObj = JSON.parse(base64urlToStr(payloadB64))
   } catch {
     return { ok: false, reason: 'malformed' }
   }
@@ -387,14 +387,14 @@ export async function verifySDJWT(
   const seenDigests = new Set<string>()
 
   for (const disclosure of disclosureParts) {
-    const digest = createHash('sha256').update(disclosure).digest('base64url')
+    const digest = bytesToBase64url(sha256(new TextEncoder().encode(disclosure)))
     if (!sdDigests.includes(digest)) return { ok: false, reason: 'digest-mismatch' }
     if (seenDigests.has(digest)) return { ok: false, reason: 'digest-mismatch' }
     seenDigests.add(digest)
 
     let disclosureArr: [string, string, unknown]
     try {
-      disclosureArr = JSON.parse(Buffer.from(disclosure, 'base64url').toString('utf8'))
+      disclosureArr = JSON.parse(base64urlToStr(disclosure))
     } catch {
       return { ok: false, reason: 'malformed' }
     }
@@ -438,7 +438,7 @@ export async function frameSDJWT(
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 function base58Encode(bytes: Uint8Array): string {
-  const hex = Buffer.from(bytes).toString('hex')
+  const hex = bytesToHex(bytes)
   let num = hex.length > 0 ? BigInt('0x' + hex) : 0n
   let encoded = ''
   while (num > 0n) {
@@ -460,8 +460,8 @@ function base58Decode(s: string): Uint8Array {
     num = num * 58n + BigInt(idx)
   }
   const hex = num.toString(16).padStart(2, '0')
-  const padded = hex.length % 2 === 0 ? hex : '0' + hex
-  const bytes = Buffer.from(padded, 'hex')
+  const evenHex = hex.length % 2 === 0 ? hex : '0' + hex
+  const bytes = new Uint8Array(evenHex.match(/../g)!.map(b => parseInt(b, 16)))
   const leadingOnes = [...s].findIndex(c => c !== '1')
   const leading = leadingOnes < 0 ? s.length : leadingOnes
   return new Uint8Array([...new Uint8Array(leading), ...bytes])

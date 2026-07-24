@@ -7,8 +7,10 @@
  * Hashing : SHA-256 via Node built-in crypto
  */
 
-import sodium = require('libsodium-wrappers')
-import { scryptSync, createHash, randomBytes } from 'crypto'
+import * as sodium from 'libsodium-wrappers'
+import { scrypt as nobleScrypt } from '@noble/hashes/scrypt'
+import { sha256 } from '@noble/hashes/sha256'
+import { randomBytes, bytesToHex, concatBytes } from '@noble/hashes/utils'
 
 // scrypt parameters — 2^16 for new vaults; old vaults sealed with 2^14 pass N explicitly
 export const SCRYPT_N_V1 = 16384  // 2^14 — legacy, stored in VaultHeader.scryptN
@@ -24,13 +26,17 @@ export interface EncryptedBlob {
   ciphertext: string  // base64url
 }
 
+// When Vite bundles a CJS module via import *, the actual exports land on .default.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sodiumApi: any = (sodium as any).default ?? sodium
+
 let _sodiumReady = false
-async function ensureSodium(): Promise<typeof sodium> {
+async function ensureSodium(): Promise<typeof sodiumApi> {
   if (!_sodiumReady) {
-    await sodium.ready
+    await sodiumApi.ready
     _sodiumReady = true
   }
-  return sodium
+  return sodiumApi
 }
 
 // ── Key derivation ──────────────────────────────────────────────────────────
@@ -45,16 +51,12 @@ export async function deriveKey(passphrase: string, salt: Uint8Array, N = SCRYPT
     throw new Error(`Invalid scrypt N=${N}: must be an integer in [${SCRYPT_N_MIN}, ${SCRYPT_N_MAX}]`)
   }
   // maxmem must be set explicitly — Node's default (32 MB) is too low for N=2^16 (needs 64 MB)
-  const maxmem = 128 * N * SCRYPT_R * SCRYPT_P * 2
-  const keyBuf = scryptSync(passphrase, salt, SCRYPT_KEY_LEN, {
-    N, r: SCRYPT_R, p: SCRYPT_P, maxmem,
-  })
-  return new Uint8Array(keyBuf)
+  return nobleScrypt(passphrase, salt, { N, r: SCRYPT_R, p: SCRYPT_P, dkLen: SCRYPT_KEY_LEN })
 }
 
 /** Generate a fresh random 32-byte salt for key derivation. */
 export function generateSalt(): Uint8Array {
-  return new Uint8Array(randomBytes(32))
+  return randomBytes(32)
 }
 
 /**
@@ -63,10 +65,9 @@ export function generateSalt(): Uint8Array {
  * exposing the key itself.
  */
 export function keyVerificationHash(masterKey: Uint8Array): string {
-  return createHash('sha256')
-    .update('vault-key-verify')
-    .update(masterKey)
-    .digest('base64url')
+  const prefix = new TextEncoder().encode('vault-key-verify')
+  const digest = sha256(concatBytes(prefix, masterKey))
+  return bytesToBase64url(digest)
 }
 
 // ── Encryption / Decryption ─────────────────────────────────────────────────
@@ -152,12 +153,13 @@ export async function verify(
 
 /** SHA-256 hash of arbitrary bytes, returned as hex. */
 export function sha256Hex(data: Uint8Array | string): string {
-  return createHash('sha256').update(data).digest('hex')
+  const input = typeof data === 'string' ? new TextEncoder().encode(data) : data
+  return bytesToHex(sha256(input))
 }
 
 /** SHA-256 hash of a UTF-8 string, returned as hex. */
 export function sha256String(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex')
+  return bytesToHex(sha256(new TextEncoder().encode(text)))
 }
 
 // ── Memory hygiene ──────────────────────────────────────────────────────────
@@ -178,4 +180,33 @@ export async function to_base64(data: Uint8Array): Promise<string> {
 export async function from_base64(data: string): Promise<Uint8Array> {
   const s = await ensureSodium()
   return s.from_base64(data, s.base64_variants.URLSAFE_NO_PADDING)
+}
+
+// ── Sync base64url helpers (no sodium required) ──────────────────────────────
+
+/** Encode a Uint8Array to base64url (no padding). */
+export function bytesToBase64url(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/** Decode a base64url string to Uint8Array. */
+export function base64urlToBytes(b64u: string): Uint8Array {
+  const b64 = b64u.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=')
+  const bin = atob(padded)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+/** Encode a UTF-8 string to base64url. */
+export function strToBase64url(text: string): string {
+  return bytesToBase64url(new TextEncoder().encode(text))
+}
+
+/** Decode a base64url string to UTF-8. */
+export function base64urlToStr(b64u: string): string {
+  return new TextDecoder().decode(base64urlToBytes(b64u))
 }
