@@ -220,6 +220,53 @@ export interface MsgCredentialSavePrompt {
   existingClaimId?: string
 }
 
+// ── Popup → Background: native host status ────────────────────────────────────
+
+/** Popup asks whether the native desktop host is reachable. */
+export interface MsgGetNativeHostStatus {
+  type: 'GET_NATIVE_HOST_STATUS'
+}
+
+// ── Background → Popup: native host status ────────────────────────────────────
+
+export interface MsgNativeHostStatus {
+  type: 'NATIVE_HOST_STATUS'
+  available: boolean
+}
+
+// ── Native host I/O (extension ↔ desktop app via chrome.runtime.connectNative) ──
+
+/** Read the vault blob from the desktop app's file storage. */
+export interface NativeMsgReadVault {
+  type: 'READ_VAULT'
+}
+
+/** Write the sealed vault blob to the desktop app's file storage. */
+export interface NativeMsgWriteVault {
+  type: 'WRITE_VAULT'
+  blob: string
+}
+
+/** Check whether a vault file exists on disk. */
+export interface NativeMsgVaultExists {
+  type: 'VAULT_EXISTS'
+}
+
+/** Response from the native host for READ_VAULT / VAULT_EXISTS. */
+export interface NativeResponseOk {
+  ok: true
+  blob?: string   // present on READ_VAULT response
+  exists?: boolean // present on VAULT_EXISTS response
+}
+
+export interface NativeResponseErr {
+  ok: false
+  error: string
+}
+
+export type NativeRequest = NativeMsgReadVault | NativeMsgWriteVault | NativeMsgVaultExists
+export type NativeResponse = NativeResponseOk | NativeResponseErr
+
 // ── Union types ───────────────────────────────────────────────────────────────
 
 export type ContentToBackground =
@@ -251,6 +298,7 @@ export type PopupToBackground =
   | MsgGetRelayConfig
   | MsgSetRelayConfig
   | MsgSyncVault
+  | MsgGetNativeHostStatus
 
 export type BackgroundToPopup =
   | MsgApprovalsListResult
@@ -258,3 +306,4 @@ export type BackgroundToPopup =
   | MsgUnlockResult
   | MsgRelayConfig
   | MsgSyncResult
+  | MsgNativeHostStatus
