@@ -322,6 +322,7 @@ async function handleMessage(
       session.vault.lock().catch(() => { /* best effort */ })
       session = null
     }
+    _selectedVaultSource = null
     sendResponse(null)
     return
   }
@@ -620,7 +621,10 @@ async function handleMessage(
   }
 
   if (message.type === 'SELECT_VAULT') {
-    _selectedVaultSource = message.source
+    // Ignore mid-session source changes — changing backend while unlocked risks split-brain writes.
+    if (!session) {
+      _selectedVaultSource = message.source
+    }
     sendResponse(null)
     return
   }

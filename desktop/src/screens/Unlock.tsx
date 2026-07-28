@@ -5,7 +5,7 @@ import type { PersistedVault } from '@vault/vault'
 import { generateMnemonicBundle, restoreFromMnemonic } from '@vault/recovery'
 import { generateDID } from '@vault/did'
 import {
-  readVaultFile, writeVaultFile, listVaultFiles, setActiveVaultName,
+  readVaultFile, writeVaultFile, listVaultFiles, setActiveVaultName, vaultFileExists,
 } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
 
@@ -44,17 +44,25 @@ export default function Unlock({ onUnlocked }: Props) {
 
   // Discover vault files on mount to decide the initial mode.
   React.useEffect(() => {
-    void listVaultFiles().then(files => {
-      if (files.length === 0) {
+    void (async () => {
+      try {
+        const files = await listVaultFiles()
+        if (files.length === 0) {
+          // listVaultFiles skips invalid JSON — check raw existence before
+          // showing Create, so a corrupt vault.json doesn't get silently overwritten.
+          const rawExists = await vaultFileExists()
+          setMode(rawExists ? 'open' : 'create')
+        } else if (files.length === 1) {
+          setActiveVaultName(files[0].name)
+          setMode('open')
+        } else {
+          setVaultFiles(files)
+          setMode('pick')
+        }
+      } catch {
         setMode('create')
-      } else if (files.length === 1) {
-        setActiveVaultName(files[0].name)
-        setMode('open')
-      } else {
-        setVaultFiles(files)
-        setMode('pick')
       }
-    }).catch(() => setMode('create'))
+    })()
   }, [])
 
   // ── Vault picker ─────────────────────────────────────────────────────────────
@@ -161,6 +169,7 @@ export default function Unlock({ onUnlocked }: Props) {
       }
       const persisted = await pendingUnlock.vault.seal()
       await writeVaultFile(persisted)
+      setPendingUnlock(prev => prev ? { vault: prev.vault, persisted } : prev)
       setMergeStatus({ ok: true, msg: added > 0 ? `Merged ${added} claim${added === 1 ? '' : 's'}` : 'No new claims to merge' })
     } catch (err) {
       setMergeStatus({ ok: false, msg: err instanceof Error ? err.message : String(err) })

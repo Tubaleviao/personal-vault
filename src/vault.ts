@@ -251,7 +251,7 @@ export class Vault {
   importClaim(claim: Claim): void {
     this._assertUnlocked()
     if (this._state.claims[claim.id]) return
-    this._state.claims[claim.id] = claim
+    this._state.claims[claim.id] = { ...claim, ownerId: this._state.owner.id }
     this._appendAudit('claim-added', 'owner', null, { claimType: claim.type })
   }
 
