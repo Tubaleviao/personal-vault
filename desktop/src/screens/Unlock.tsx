@@ -89,6 +89,10 @@ export default function Unlock({ onUnlocked }: Props) {
         mnemonicCommitment: bundle.mnemonicCommitment,
       })
       const persisted = await vault.seal()
+      // Generate a unique filename so we never overwrite an existing vault.
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      const newName = `vault-${ts}.json`
+      setActiveVaultName(newName)
       await writeVaultFile(persisted)
       setPendingCreate({ mnemonic: bundle.mnemonic, persisted })
     } catch (err) {
