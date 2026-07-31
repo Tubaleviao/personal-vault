@@ -52,10 +52,9 @@ export default function Unlock({ onUnlocked }: Props) {
           // showing Create, so a corrupt vault.json doesn't get silently overwritten.
           const rawExists = await vaultFileExists()
           setMode(rawExists ? 'open' : 'create')
-        } else if (files.length === 1) {
-          setActiveVaultName(files[0].name)
-          setMode('open')
         } else {
+          // Always show the picker so the user can see which vault they're unlocking,
+          // even when only one is found.
           setVaultFiles(files)
           setMode('pick')
         }
@@ -199,7 +198,9 @@ export default function Unlock({ onUnlocked }: Props) {
       <div style={styles.center}>
         <div style={styles.card}>
           <h1 style={styles.title}>Personal Vault</h1>
-          <p style={styles.subtitle}>Multiple vault files found — choose one to unlock</p>
+          <p style={styles.subtitle}>
+            {vaultFiles.length === 1 ? 'One vault found — click it to unlock' : `${vaultFiles.length} vaults found — choose one to unlock`}
+          </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {vaultFiles.map(file => (
               <button
@@ -346,9 +347,9 @@ export default function Unlock({ onUnlocked }: Props) {
           {mode === 'create' ? 'Already have a vault? Unlock' : 'New vault? Create one'}
         </button>
 
-        {mode === 'open' && vaultFiles.length > 1 && (
+        {mode === 'open' && vaultFiles.length > 0 && (
           <button style={styles.switchLink} onClick={() => setMode('pick')}>
-            Choose a different vault file
+            ← Back to vault list
           </button>
         )}
       </div>
