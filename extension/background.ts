@@ -40,7 +40,7 @@ import { syncVault } from '../src/relay'
 import type { RelayConfig } from '../src/relay'
 import { generateMnemonicBundle, restoreFromMnemonic, verifyMnemonicCommitment } from '../src/recovery'
 import { didFromSeed } from '../src/did'
-import { isNativeHostAvailable, nativeReadVault, nativeWriteVault, nativeListVaults } from './nativeHost'
+import { isNativeHostAvailable, nativeReadVault, nativeWriteVault, nativeListVaults, nativeDeleteVault } from './nativeHost'
 
 // ── Native host availability (cached per service-worker lifetime) ──────────────
 
@@ -679,6 +679,21 @@ async function handleMessage(
       sendResponse({ type: 'MERGE_RESULT', ok: true, added })
     } catch (err) {
       sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: String(err) })
+    }
+    return
+  }
+
+  if (message.type === 'DELETE_VAULT') {
+    try {
+      if (message.source === 'local') {
+        await chrome.storage.local.remove('vault')
+      } else {
+        if (!message.name) throw new Error('No vault name provided')
+        await nativeDeleteVault(message.name)
+      }
+      sendResponse({ type: 'DELETE_RESULT', ok: true })
+    } catch (err) {
+      sendResponse({ type: 'DELETE_RESULT', ok: false, error: String(err) })
     }
     return
   }

@@ -74,6 +74,14 @@ pub fn vault_file_exists() -> Result<bool, String> {
     Ok(vault_path()?.exists())
 }
 
+/// Delete a specific vault file by name. Rejects path-traversal attempts.
+#[tauri::command]
+pub fn delete_vault_file(name: String) -> Result<(), String> {
+    sanitize_vault_filename(&name)?;
+    let path = vault_dir()?.join(&name);
+    fs::remove_file(&path).map_err(|e| format!("Failed to delete vault: {e}"))
+}
+
 /// List all *.json vault files in the vault directory.
 /// Returns an array of { name, content } objects; invalid JSON files are skipped.
 /// .tmp files are excluded.

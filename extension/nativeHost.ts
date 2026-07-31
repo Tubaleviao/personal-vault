@@ -94,6 +94,11 @@ export async function nativeWriteVault(vault: PersistedVault): Promise<void> {
  * List all vault files in the desktop vault directory.
  * Returns an array of { name, vault } for each valid vault file found.
  */
+export async function nativeDeleteVault(name: string): Promise<void> {
+  const res = await sendNative({ type: 'DELETE_VAULT', name })
+  if (!res.ok) throw new Error(res.error)
+}
+
 export async function nativeListVaults(): Promise<Array<{ name: string; vault: PersistedVault }>> {
   const res = await sendNative({ type: 'LIST_VAULTS' })
   if (!res.ok) throw new Error(res.error)

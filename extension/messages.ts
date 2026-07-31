@@ -289,6 +289,19 @@ export interface MsgMergeResult {
   error?: string
 }
 
+/** Popup asks background to delete a vault by source + name. */
+export interface MsgDeleteVault {
+  type: 'DELETE_VAULT'
+  source: 'native' | 'local'
+  name?: string
+}
+
+export interface MsgDeleteResult {
+  type: 'DELETE_RESULT'
+  ok: boolean
+  error?: string
+}
+
 // ── Popup → Background: native host status ────────────────────────────────────
 
 /** Popup asks whether the native desktop host is reachable. */
@@ -327,6 +340,12 @@ export interface NativeMsgListVaults {
   type: 'LIST_VAULTS'
 }
 
+/** Delete a vault file from the desktop vault directory. */
+export interface NativeMsgDeleteVault {
+  type: 'DELETE_VAULT'
+  name: string
+}
+
 /** Response from the native host for READ_VAULT / VAULT_EXISTS. */
 export interface NativeResponseOk {
   ok: true
@@ -340,7 +359,7 @@ export interface NativeResponseErr {
   error: string
 }
 
-export type NativeRequest = NativeMsgReadVault | NativeMsgWriteVault | NativeMsgVaultExists | NativeMsgListVaults
+export type NativeRequest = NativeMsgReadVault | NativeMsgWriteVault | NativeMsgVaultExists | NativeMsgListVaults | NativeMsgDeleteVault
 export type NativeResponse = NativeResponseOk | NativeResponseErr
 
 // ── Union types ───────────────────────────────────────────────────────────────
@@ -379,6 +398,7 @@ export type PopupToBackground =
   | MsgGetVaultList
   | MsgSelectVault
   | MsgMergeVault
+  | MsgDeleteVault
 
 export type BackgroundToPopup =
   | MsgApprovalsListResult
@@ -390,3 +410,4 @@ export type BackgroundToPopup =
   | MsgNativeHostStatus
   | MsgVaultList
   | MsgMergeResult
+  | MsgDeleteResult

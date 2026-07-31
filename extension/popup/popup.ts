@@ -49,9 +49,13 @@ const pickerCreateBtn = document.getElementById('picker-create-btn')!
 const vaultSourceBadge = document.getElementById('vault-source-badge')!
 const backToPickerBtn = document.getElementById('back-to-picker')!
 
-// Merge offer UI
-const mergeOffer = document.getElementById('merge-offer')!
+// Merge UI
+const mainPanel = document.getElementById('main-panel')!
+const mergePanel = document.getElementById('merge-panel')!
+const importBtn = document.getElementById('import-btn')!
+const mergeBackBtn = document.getElementById('merge-back-btn')!
 const mergeVaultList = document.getElementById('merge-vault-list')!
+const mergeEmpty = document.getElementById('merge-empty')!
 
 // Create-vault UI
 const unlockPanel = document.getElementById('unlock-view')!
@@ -122,9 +126,11 @@ function renderSyncStatus(relayUrl: string, lastSyncedAt: string | null) {
 
 function showUnlocked(ownerDid: string, approvals: SiteApproval[]) {
   statusDot.classList.add('unlocked')
-  didShort.textContent = ownerDid.slice(-8)
+  didShort.textContent = ownerDid !== 'unknown' ? ownerDid.slice(-8) : ''
   lockedView.style.display = 'none'
   unlockedView.style.display = 'block'
+  mainPanel.style.display = 'block'
+  mergePanel.style.display = 'none'
   renderApprovals(approvals)
 }
 
@@ -185,17 +191,29 @@ async function syncNow() {
     (res.syncedAt ? ` · ${new Date(res.syncedAt).toLocaleTimeString()}` : '')
 }
 
-// ── Merge offer ───────────────────────────────────────────────────────────────
+// ── Merge panel ───────────────────────────────────────────────────────────────
+
+/** Vaults available for merging — set by transitionToUnlocked/init and used when the user opens the merge panel. */
+let _mergeableVaults: VaultListEntry[] = []
 
 function renderMergeOffer(others: VaultListEntry[]) {
-  if (others.length === 0) {
-    mergeOffer.style.display = 'none'
+  _mergeableVaults = others
+  // Show import button only when there are other vaults
+  importBtn.style.display = others.length > 0 ? 'block' : 'none'
+}
+
+function showMergePanel() {
+  mainPanel.style.display = 'none'
+  mergePanel.style.display = 'block'
+
+  mergeVaultList.innerHTML = ''
+  if (_mergeableVaults.length === 0) {
+    mergeEmpty.style.display = 'block'
     return
   }
-  mergeOffer.style.display = 'block'
-  mergeVaultList.innerHTML = ''
+  mergeEmpty.style.display = 'none'
 
-  for (const v of others) {
+  for (const v of _mergeableVaults) {
     const friendlyName = v.name
       ? v.name.replace(/\.json$/, '').replace(/-/g, ' ')
       : (v.source === 'local' ? 'Browser vault' : 'Desktop vault')
@@ -250,26 +268,43 @@ function renderMergeOffer(others: VaultListEntry[]) {
       btn.textContent = 'Merging…'
       status.textContent = ''
 
-      const res = await send<BackgroundToPopup>({
-        type: 'MERGE_VAULT',
-        source: v.source,
-        name: v.name,
-        passphrase,
+      const mergeRes = await send<BackgroundToPopup>({
+        type: 'MERGE_VAULT', source: v.source, name: v.name, passphrase,
       }) as { type: 'MERGE_RESULT'; ok: boolean; added: number; error?: string } | null
 
       input.value = ''
       btn.removeAttribute('disabled')
       btn.textContent = 'Merge'
 
-      if (!res?.ok) {
+      if (!mergeRes?.ok) {
         status.style.color = '#f87171'
-        status.textContent = res?.error ?? 'Error'
+        status.textContent = mergeRes?.error ?? 'Wrong passphrase or error'
         return
       }
+
+      // Merge succeeded — delete the source vault
+      btn.setAttribute('disabled', 'true')
+      status.style.color = '#64748b'
+      status.textContent = 'Deleting source vault…'
+
+      const delRes = await send<BackgroundToPopup>({
+        type: 'DELETE_VAULT', source: v.source, name: v.name,
+      }) as { type: 'DELETE_RESULT'; ok: boolean; error?: string } | null
+
+      btn.removeAttribute('disabled')
+
+      if (!delRes?.ok) {
+        status.style.color = '#fbbf24'
+        const addedText = mergeRes.added > 0 ? `Merged ${mergeRes.added} claim${mergeRes.added === 1 ? '' : 's'}` : 'No new claims'
+        status.textContent = `${addedText} — could not delete source: ${delRes?.error ?? 'unknown error'}`
+        return
+      }
+
+      const addedText = mergeRes.added > 0 ? `Merged ${mergeRes.added} claim${mergeRes.added === 1 ? '' : 's'}` : 'No new claims'
       status.style.color = '#22c55e'
-      status.textContent = res.added > 0 ? `Merged ${res.added} claim${res.added === 1 ? '' : 's'}` : 'No new claims'
-      // Remove this card after a successful merge — vault is now imported
-      setTimeout(() => card.remove(), 2000)
+      status.textContent = `${addedText} — source vault deleted`
+      _mergeableVaults = _mergeableVaults.filter(x => !(x.source === v.source && x.name === v.name))
+      setTimeout(() => card.remove(), 2500)
     })
   }
 }
@@ -505,6 +540,11 @@ mnemonicDoneBtn.addEventListener('click', () => {
 })
 
 pickerCreateBtn.addEventListener('click', showCreatePanel)
+importBtn.addEventListener('click', showMergePanel)
+mergeBackBtn.addEventListener('click', () => {
+  mergePanel.style.display = 'none'
+  mainPanel.style.display = 'block'
+})
 
 // Show whether the desktop native host is reachable
 async function updateNativeBadge() {

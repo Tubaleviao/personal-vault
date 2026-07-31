@@ -44,6 +44,11 @@ export interface VaultFileEntry {
   vault: PersistedVault
 }
 
+/** Delete a specific vault file by name. */
+export async function deleteVaultFile(name: string): Promise<void> {
+  await invoke<void>('delete_vault_file', { name })
+}
+
 /** List all *.json vault files in the vault directory. Invalid JSON files are skipped. */
 export async function listVaultFiles(): Promise<VaultFileEntry[]> {
   const raw = await invoke<Array<{ name: string; content: string }>>('list_vault_files')

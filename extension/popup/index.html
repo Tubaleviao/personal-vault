@@ -153,31 +153,36 @@
     </div>
   </section>
 
-  <!-- Unlocked view -->
+  <!-- Unlocked view — main panel -->
   <section id="unlocked-view" style="display:none">
-    <h2>Approved Sites</h2>
-    <ul id="approval-list" class="approval-list"></ul>
-    <div id="no-approvals">No sites approved yet.</div>
+    <!-- Main screen -->
+    <div id="main-panel">
+      <h2>Approved Sites</h2>
+      <ul id="approval-list" class="approval-list"></ul>
+      <div id="no-approvals">No sites approved yet.</div>
 
-    <h2 style="margin-top:14px">Sync</h2>
-    <div id="sync-section" style="display:flex;flex-direction:column;gap:6px">
-      <input type="url" id="relay-url" placeholder="https://your-relay.workers.dev" style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:7px 10px;width:100%;outline:none">
-      <div style="display:flex;gap:6px">
-        <button id="save-relay-btn" class="btn-primary" style="flex:1">Save URL</button>
-        <button id="sync-btn" class="btn-primary" style="flex:1">Sync now</button>
+      <h2 style="margin-top:14px">Sync</h2>
+      <div id="sync-section" style="display:flex;flex-direction:column;gap:6px">
+        <input type="url" id="relay-url" placeholder="https://your-relay.workers.dev" style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:7px 10px;width:100%;outline:none">
+        <div style="display:flex;gap:6px">
+          <button id="save-relay-btn" class="btn-primary" style="flex:1">Save URL</button>
+          <button id="sync-btn" class="btn-primary" style="flex:1">Sync now</button>
+        </div>
+        <div id="sync-status" style="font-size:11px;color:#64748b;min-height:16px"></div>
       </div>
-      <div id="sync-status" style="font-size:11px;color:#64748b;min-height:16px"></div>
+
+      <button id="import-btn" style="margin-top:14px;width:100%;background:transparent;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer">Import from another vault</button>
+      <button id="lock-btn" class="btn-danger" style="margin-top:8px;width:100%">Lock vault</button>
     </div>
 
-    <!-- Merge offer (shown when other vaults exist after unlock) -->
-    <div id="merge-offer" style="display:none;margin-top:14px">
+    <!-- Merge screen (replaces main panel) -->
+    <div id="merge-panel" style="display:none">
+      <button id="merge-back-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;margin-bottom:10px;display:block">← Back</button>
       <h2>Import from another vault</h2>
-      <p style="color:#94a3b8;font-size:11px;margin:4px 0 8px">Select a vault to import claims from:</p>
-      <!-- Populated dynamically by popup.ts -->
+      <p style="color:#64748b;font-size:11px;margin:4px 0 10px">Enter the passphrase of the vault to import. It will be deleted after a successful merge.</p>
       <div id="merge-vault-list" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div id="merge-empty" style="display:none;color:#64748b;font-size:12px;text-align:center;padding:16px 0">No other vaults found.</div>
     </div>
-
-    <button id="lock-btn" class="btn-danger" style="margin-top:14px;width:100%">Lock vault</button>
   </section>
 
   <script type="module" src="popup.js"></script>

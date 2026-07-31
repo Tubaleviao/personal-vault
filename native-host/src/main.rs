@@ -30,6 +30,7 @@ enum Request {
     WriteVault { blob: String },
     VaultExists,
     ListVaults,
+    DeleteVault { name: String },
 }
 
 fn vault_path() -> Result<PathBuf, String> {
@@ -137,6 +138,19 @@ fn handle(req: Request) -> Value {
                 match result {
                     Ok(_) => json!({ "ok": true }),
                     Err(e) => json!({ "ok": false, "error": e }),
+                }
+            }
+        },
+        Request::DeleteVault { name } => match sanitize_name(&name) {
+            Err(e) => json!({ "ok": false, "error": e }),
+            Ok(n) => match vault_dir() {
+                Err(e) => json!({ "ok": false, "error": e }),
+                Ok(dir) => {
+                    let path = dir.join(n);
+                    match fs::remove_file(&path) {
+                        Ok(_) => json!({ "ok": true }),
+                        Err(e) => json!({ "ok": false, "error": format!("Delete error: {e}") }),
+                    }
                 }
             }
         },

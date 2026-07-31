@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import type { Vault, PersistedVault } from '@vault/vault'
 import { Vault as VaultClass } from '@vault/vault'
-import { listVaultFiles, readVaultFile, writeVaultFile, setActiveVaultName } from '../tauriVault'
+import { listVaultFiles, readVaultFile, writeVaultFile, setActiveVaultName, deleteVaultFile } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
 
 interface Props {
@@ -68,9 +68,14 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
       await writeVaultFile(persisted)
       onVaultChanged(vault, persisted)
 
+      // Delete the source vault file after a successful merge
+      await deleteVaultFile(name)
+      setOthers(prev => prev.filter(f => f.name !== name))
+
+      const addedMsg = added > 0 ? `Merged ${added} claim${added === 1 ? '' : 's'}` : 'No new claims to merge'
       setMergeStates(s => ({
         ...s,
-        [name]: { ...s[name], busy: false, passphrase: '', result: { ok: true, msg: added > 0 ? `Merged ${added} claim${added === 1 ? '' : 's'}` : 'No new claims to merge' } },
+        [name]: { ...s[name], busy: false, passphrase: '', result: { ok: true, msg: `${addedMsg} — source vault deleted` } },
       }))
     } catch (err) {
       setActiveVaultName(activeVaultName)
@@ -95,7 +100,7 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
   return (
     <div>
       <h1 style={styles.heading}>Import from another vault</h1>
-      <p style={styles.subtitle}>Enter the passphrase of the vault you want to merge into this one. Claims that already exist are skipped.</p>
+      <p style={styles.subtitle}>Enter the passphrase of the vault you want to merge into this one. Claims that already exist are skipped. The source vault file is deleted after a successful merge.</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
         {others.map(file => {
           const state = mergeStates[file.name]
