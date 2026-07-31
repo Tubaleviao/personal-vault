@@ -9,6 +9,29 @@ import {
 } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
 
+/**
+ * Generate a unique vault filename.
+ * Uses the display name if provided (sanitized), otherwise a unix timestamp.
+ * Appends a timestamp suffix if the base name is already taken.
+ */
+function uniqueVaultFilename(displayName: string, existing: string[]): string {
+  const taken = new Set(existing)
+  const ts = Date.now()
+
+  const base = displayName.trim()
+    ? displayName.trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+    : String(ts)
+
+  const candidate = `${base}.json`
+  if (!taken.has(candidate)) return candidate
+
+  // Name already taken — append timestamp suffix to make it unique.
+  return `${base}-${ts}.json`
+}
+
 interface Props {
   onUnlocked: (vault: Vault, persisted: PersistedVault) => void
 }
@@ -89,9 +112,7 @@ export default function Unlock({ onUnlocked }: Props) {
         mnemonicCommitment: bundle.mnemonicCommitment,
       })
       const persisted = await vault.seal()
-      // Generate a unique filename so we never overwrite an existing vault.
-      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-      const newName = `vault-${ts}.json`
+      const newName = uniqueVaultFilename(displayName, vaultFiles.map(f => f.name))
       setActiveVaultName(newName)
       await writeVaultFile(persisted)
       setPendingCreate({ mnemonic: bundle.mnemonic, persisted })
