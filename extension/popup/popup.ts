@@ -188,6 +188,34 @@ async function syncNow() {
     (res.syncedAt ? ` · ${new Date(res.syncedAt).toLocaleTimeString()}` : '')
 }
 
+// ── Transition helpers ────────────────────────────────────────────────────────
+
+/**
+ * Fetch approvals + relay config within the same SW activation that just
+ * unlocked, then show the unlocked view. Avoids a second GET_VAULT_STATUS
+ * round-trip that would race against the MV3 SW suspension window.
+ */
+async function transitionToUnlocked(ownerDid: string, activeSource: 'native' | 'local' | null) {
+  const [approvalsRes, relayRes, vaultListRes] = await Promise.all([
+    send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
+    send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
+    send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
+  ])
+
+  showUnlocked(ownerDid, approvalsRes?.approvals ?? [])
+  if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
+
+  const vaults = vaultListRes?.vaults ?? []
+  const mergeTarget = vaults.find(v => v.source !== activeSource)
+  if (mergeTarget) {
+    mergeSourceLabel.textContent = mergeTarget.source === 'local' ? 'browser storage' : 'desktop vault file'
+    mergeOffer.dataset['source'] = mergeTarget.source
+    mergeOffer.style.display = 'block'
+  } else {
+    mergeOffer.style.display = 'none'
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 /** Vaults discovered in the last init() call — used by back-to-picker. */
@@ -259,12 +287,17 @@ function showCreatePanel() {
   mnemonicPanel.style.display = 'none'
 }
 
-function showMnemonicPanel(mnemonic: string) {
+let _pendingOwnerDid: string | null = null
+let _pendingActiveSource: 'native' | 'local' | null = null
+
+function showMnemonicPanel(mnemonic: string, ownerDid?: string, activeSource?: 'native' | 'local') {
   vaultPickerPanel.style.display = 'none'
   unlockPanel.style.display = 'none'
   createPanel.style.display = 'none'
   mnemonicPanel.style.display = 'block'
   mnemonicDisplay.textContent = mnemonic
+  _pendingOwnerDid = ownerDid ?? null
+  _pendingActiveSource = activeSource ?? null
 }
 
 function showVaultPickerPanel(vaults: VaultListEntry[]) {
@@ -317,7 +350,7 @@ unlockForm.addEventListener('submit', async e => {
   if (!passphrase) return
   const mnemonic = mnemonicInput.value.trim() || undefined
 
-  const res = await send<BackgroundToPopup>({ type: 'UNLOCK_VAULT', passphrase, mnemonic }) as { type: 'UNLOCK_RESULT'; ok: boolean; error?: string } | null
+  const res = await send<BackgroundToPopup>({ type: 'UNLOCK_VAULT', passphrase, mnemonic }) as { type: 'UNLOCK_RESULT'; ok: boolean; error?: string; ownerDid?: string; activeSource?: 'native' | 'local' } | null
   if (!res?.ok) {
     errorMsg.textContent = res?.error ?? 'Failed to unlock vault'
     errorMsg.style.display = 'block'
@@ -327,7 +360,11 @@ unlockForm.addEventListener('submit', async e => {
 
   passphraseInput.value = ''
   mnemonicInput.value = ''
-  await init()
+  if (res.ownerDid) {
+    await transitionToUnlocked(res.ownerDid, res.activeSource ?? null)
+  } else {
+    await init()
+  }
 })
 
 lockBtn.addEventListener('click', lockVault)
@@ -350,7 +387,7 @@ createForm.addEventListener('submit', async e => {
     return
   }
 
-  const res = await send<BackgroundToPopup>({ type: 'CREATE_VAULT', passphrase }) as { type: 'CREATE_RESULT'; ok: boolean; mnemonic?: string; error?: string } | null
+  const res = await send<BackgroundToPopup>({ type: 'CREATE_VAULT', passphrase }) as { type: 'CREATE_RESULT'; ok: boolean; mnemonic?: string; error?: string; ownerDid?: string; activeSource?: 'native' | 'local' } | null
   if (!res?.ok) {
     createErrorMsg.textContent = res?.error ?? 'Failed to create vault'
     createErrorMsg.style.display = 'block'
@@ -364,7 +401,7 @@ createForm.addEventListener('submit', async e => {
     createErrorMsg.style.display = 'block'
     return
   }
-  showMnemonicPanel(res.mnemonic)
+  showMnemonicPanel(res.mnemonic, res.ownerDid, res.activeSource)
 })
 
 copyMnemonicBtn.addEventListener('click', () => {
@@ -374,7 +411,11 @@ copyMnemonicBtn.addEventListener('click', () => {
 })
 
 mnemonicDoneBtn.addEventListener('click', () => {
-  init().catch(() => showLocked())
+  if (_pendingOwnerDid) {
+    transitionToUnlocked(_pendingOwnerDid, _pendingActiveSource).catch(() => showLocked())
+  } else {
+    init().catch(() => showLocked())
+  }
 })
 
 pickerCreateBtn.addEventListener('click', showCreatePanel)

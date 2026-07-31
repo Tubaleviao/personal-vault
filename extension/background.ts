@@ -240,7 +240,8 @@ async function handleMessage(
         ownerPrivateKey,
         ownerPublicKey,
       }
-      sendResponse({ type: 'UNLOCK_RESULT', ok: true })
+      const activeSource = _selectedVaultSource ?? (_nativeHostAvailable ? 'native' : 'local')
+      sendResponse({ type: 'UNLOCK_RESULT', ok: true, ownerDid: vault.owner.did, activeSource })
     } catch (err) {
       sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: String(err) })
     }
@@ -308,7 +309,7 @@ async function handleMessage(
         ownerPublicKey: bundle.keypair.publicKey,
       }
 
-      sendResponse({ type: 'CREATE_RESULT', ok: true, mnemonic: bundle.mnemonic })
+      sendResponse({ type: 'CREATE_RESULT', ok: true, mnemonic: bundle.mnemonic, ownerDid: didDoc.id, activeSource: targetSource })
     } catch (err) {
       sendResponse({ type: 'CREATE_RESULT', ok: false, error: String(err) })
     }

@@ -153,6 +153,8 @@ export interface MsgCreateResult {
   ok: boolean
   mnemonic?: string
   error?: string
+  ownerDid?: string
+  activeSource?: 'native' | 'local'
 }
 
 // ── Background → Popup ────────────────────────────────────────────────────────
@@ -175,6 +177,8 @@ export interface MsgUnlockResult {
   type: 'UNLOCK_RESULT'
   ok: boolean
   error?: string
+  ownerDid?: string
+  activeSource?: 'native' | 'local'
 }
 
 // ── Credential messages: Content → Background ─────────────────────────────────
