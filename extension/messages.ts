@@ -276,6 +276,8 @@ export interface MsgMergeVault {
   type: 'MERGE_VAULT'
   /** The storage source that holds the other vault. */
   source: 'native' | 'local'
+  /** For native source: the specific vault filename to read. */
+  name?: string
   passphrase: string
 }
 

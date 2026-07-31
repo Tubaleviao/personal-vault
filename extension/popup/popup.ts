@@ -51,10 +51,7 @@ const backToPickerBtn = document.getElementById('back-to-picker')!
 
 // Merge offer UI
 const mergeOffer = document.getElementById('merge-offer')!
-const mergeSourceLabel = document.getElementById('merge-source-label')!
-const mergeForm = document.getElementById('merge-form') as HTMLFormElement
-const mergePassphrase = document.getElementById('merge-passphrase') as HTMLInputElement
-const mergeStatus = document.getElementById('merge-status')!
+const mergeVaultList = document.getElementById('merge-vault-list')!
 
 // Create-vault UI
 const unlockPanel = document.getElementById('unlock-view')!
@@ -188,6 +185,95 @@ async function syncNow() {
     (res.syncedAt ? ` · ${new Date(res.syncedAt).toLocaleTimeString()}` : '')
 }
 
+// ── Merge offer ───────────────────────────────────────────────────────────────
+
+function renderMergeOffer(others: VaultListEntry[]) {
+  if (others.length === 0) {
+    mergeOffer.style.display = 'none'
+    return
+  }
+  mergeOffer.style.display = 'block'
+  mergeVaultList.innerHTML = ''
+
+  for (const v of others) {
+    const friendlyName = v.name
+      ? v.name.replace(/\.json$/, '').replace(/-/g, ' ')
+      : (v.source === 'local' ? 'Browser vault' : 'Desktop vault')
+
+    const card = document.createElement('div')
+    card.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:6px'
+
+    const labelRow = document.createElement('div')
+    labelRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center'
+
+    const nameEl = document.createElement('span')
+    nameEl.style.cssText = 'font-size:12px;font-weight:600;color:#7dd3fc'
+    nameEl.textContent = friendlyName
+
+    const badgeEl = document.createElement('span')
+    badgeEl.style.cssText = 'font-size:10px;color:#64748b'
+    badgeEl.textContent = v.source === 'native' ? 'desktop' : 'browser'
+
+    labelRow.appendChild(nameEl)
+    labelRow.appendChild(badgeEl)
+
+    const form = document.createElement('form')
+    form.style.cssText = 'display:flex;gap:6px'
+    form.autocomplete = 'off'
+
+    const input = document.createElement('input')
+    input.type = 'password'
+    input.placeholder = 'Passphrase'
+    input.style.cssText = 'flex:1;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:6px 8px;outline:none;min-width:0'
+
+    const btn = document.createElement('button')
+    btn.type = 'submit'
+    btn.className = 'btn-primary'
+    btn.style.cssText = 'flex-shrink:0;font-size:11px;padding:6px 10px'
+    btn.textContent = 'Merge'
+
+    const status = document.createElement('div')
+    status.style.cssText = 'font-size:11px;min-height:14px'
+
+    form.appendChild(input)
+    form.appendChild(btn)
+    card.appendChild(labelRow)
+    card.appendChild(form)
+    card.appendChild(status)
+    mergeVaultList.appendChild(card)
+
+    form.addEventListener('submit', async e => {
+      e.preventDefault()
+      const passphrase = input.value
+      if (!passphrase) return
+      btn.setAttribute('disabled', 'true')
+      btn.textContent = 'Merging…'
+      status.textContent = ''
+
+      const res = await send<BackgroundToPopup>({
+        type: 'MERGE_VAULT',
+        source: v.source,
+        name: v.name,
+        passphrase,
+      }) as { type: 'MERGE_RESULT'; ok: boolean; added: number; error?: string } | null
+
+      input.value = ''
+      btn.removeAttribute('disabled')
+      btn.textContent = 'Merge'
+
+      if (!res?.ok) {
+        status.style.color = '#f87171'
+        status.textContent = res?.error ?? 'Error'
+        return
+      }
+      status.style.color = '#22c55e'
+      status.textContent = res.added > 0 ? `Merged ${res.added} claim${res.added === 1 ? '' : 's'}` : 'No new claims'
+      // Remove this card after a successful merge — vault is now imported
+      setTimeout(() => card.remove(), 2000)
+    })
+  }
+}
+
 // ── Transition helpers ────────────────────────────────────────────────────────
 
 /**
@@ -213,15 +299,11 @@ async function transitionToUnlocked(ownerDid: string, activeSource: 'native' | '
   if (relayRes?.type === 'RELAY_CONFIG') renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 
   const vaults = (vaultListRes?.type === 'VAULT_LIST' ? vaultListRes.vaults : null) ?? []
-  const mergeTarget = vaults.find(v => v.source !== activeSource)
-  if (mergeTarget) {
-    mergeSourceLabel.textContent = mergeTarget.source === 'local' ? 'browser storage' : 'desktop vault file'
-    mergeOffer.dataset['source'] = mergeTarget.source
-    mergeOffer.style.display = 'block'
-  } else {
-    mergeOffer.style.display = 'none'
-  }
+  const others = vaults.filter(v => !(v.source === activeSource && (!v.name || v.name === _selectedNativeVaultName)))
+  renderMergeOffer(others)
 }
+
+let _selectedNativeVaultName: string | null = null
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -241,17 +323,11 @@ async function init() {
     showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [])
     if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 
-    // Show merge offer if a second vault source exists alongside the active one
+    // Show merge offer for all vaults that are not the currently active one
     const vaults = vaultListRes?.vaults ?? []
     const activeSource = statusRes.activeSource
-    const mergeTarget = vaults.find(v => v.source !== activeSource)
-    if (mergeTarget) {
-      mergeSourceLabel.textContent = mergeTarget.source === 'local' ? 'browser storage' : 'desktop vault file'
-      mergeOffer.dataset['source'] = mergeTarget.source
-      mergeOffer.style.display = 'block'
-    } else {
-      mergeOffer.style.display = 'none'
-    }
+    const others = vaults.filter(v => !(v.source === activeSource && (!v.name || v.name === _selectedNativeVaultName)))
+    renderMergeOffer(others)
     return
   }
 
@@ -339,6 +415,7 @@ function showVaultPickerPanel(vaults: VaultListEntry[]) {
     item.appendChild(label)
     item.appendChild(meta)
     item.onclick = async () => {
+      _selectedNativeVaultName = v.name ?? null
       await send<BackgroundToPopup>({ type: 'SELECT_VAULT', source: v.source, name: v.name })
       showUnlockPanel(v.source)
     }
@@ -428,33 +505,6 @@ mnemonicDoneBtn.addEventListener('click', () => {
 })
 
 pickerCreateBtn.addEventListener('click', showCreatePanel)
-
-mergeForm.addEventListener('submit', async e => {
-  e.preventDefault()
-  const passphrase = mergePassphrase.value
-  if (!passphrase) return
-
-  const source = mergeOffer.dataset['source'] as 'native' | 'local' | undefined
-  if (!source) return
-
-  mergeStatus.textContent = 'Merging…'
-  mergeStatus.style.color = '#64748b'
-
-  const res = await send<BackgroundToPopup>({ type: 'MERGE_VAULT', source, passphrase }) as { type: 'MERGE_RESULT'; ok: boolean; added: number; error?: string } | null
-  mergePassphrase.value = ''
-
-  if (!res?.ok) {
-    mergeStatus.textContent = `Error: ${res?.error ?? 'Unknown error'}`
-    mergeStatus.style.color = '#f87171'
-    return
-  }
-
-  mergeStatus.style.color = '#22c55e'
-  mergeStatus.textContent = res.added > 0
-    ? `Merged ${res.added} claim${res.added === 1 ? '' : 's'} successfully`
-    : 'No new claims to merge'
-  mergeOffer.style.display = 'none'
-})
 
 // Show whether the desktop native host is reachable
 async function updateNativeBadge() {

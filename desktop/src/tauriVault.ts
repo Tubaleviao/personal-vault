@@ -16,6 +16,11 @@ export function setActiveVaultName(name: string): void {
   _activeVaultName = name
 }
 
+/** Return the filename currently being used for vault I/O. */
+export function getActiveVaultName(): string {
+  return _activeVaultName
+}
+
 export async function readVaultFile(): Promise<PersistedVault | null> {
   const raw = await invoke<string | null>('read_vault_file', { name: _activeVaultName })
   if (raw === null) return null

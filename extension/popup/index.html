@@ -169,15 +169,12 @@
       <div id="sync-status" style="font-size:11px;color:#64748b;min-height:16px"></div>
     </div>
 
-    <!-- Merge offer (shown when a secondary vault exists after unlock) -->
+    <!-- Merge offer (shown when other vaults exist after unlock) -->
     <div id="merge-offer" style="display:none;margin-top:14px">
-      <h2>Import from other vault</h2>
-      <p style="color:#94a3b8;font-size:11px;margin:4px 0 8px">A vault was also found in <strong id="merge-source-label">browser storage</strong>. Enter its passphrase to merge its claims into this vault.</p>
-      <form id="merge-form" autocomplete="off" style="display:flex;flex-direction:column;gap:6px">
-        <input type="password" id="merge-passphrase" placeholder="Other vault's passphrase" style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:7px 10px;width:100%;outline:none">
-        <button type="submit" class="btn-primary">Merge claims</button>
-      </form>
-      <div id="merge-status" style="font-size:11px;color:#64748b;margin-top:4px;min-height:16px"></div>
+      <h2>Import from another vault</h2>
+      <p style="color:#94a3b8;font-size:11px;margin:4px 0 8px">Select a vault to import claims from:</p>
+      <!-- Populated dynamically by popup.ts -->
+      <div id="merge-vault-list" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
 
     <button id="lock-btn" class="btn-danger" style="margin-top:14px;width:100%">Lock vault</button>

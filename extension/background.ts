@@ -649,7 +649,7 @@ async function handleMessage(
         const result = await chrome.storage.local.get('vault')
         otherBlob = (result['vault'] as PersistedVault | undefined) ?? null
       } else {
-        otherBlob = await nativeReadVault()
+        otherBlob = await nativeReadVault(message.name)
       }
     } catch (err) {
       sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: `Could not read vault: ${err}` })
