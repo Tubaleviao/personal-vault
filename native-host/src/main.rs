@@ -26,15 +26,14 @@ use serde_json::{json, Value};
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
 enum Request {
-    ReadVault,
+    ReadVault { name: Option<String> },
     WriteVault { blob: String },
     VaultExists,
+    ListVaults,
 }
 
 fn vault_path() -> Result<PathBuf, String> {
-    let base = dirs_next::data_local_dir()
-        .ok_or_else(|| "Could not determine data directory".to_string())?;
-    Ok(base.join("personal-vault").join("vault.json"))
+    Ok(vault_dir()?.join("vault.json"))
 }
 
 fn read_msg(stdin: &mut impl Read) -> io::Result<Option<Value>> {
@@ -58,24 +57,71 @@ fn write_msg(stdout: &mut impl Write, response: Value) -> io::Result<()> {
     stdout.flush()
 }
 
+fn vault_dir() -> Result<std::path::PathBuf, String> {
+    let base = dirs_next::data_local_dir()
+        .ok_or_else(|| "Could not determine data directory".to_string())?;
+    Ok(base.join("personal-vault"))
+}
+
+fn sanitize_name(name: &str) -> Result<&str, String> {
+    if name.is_empty() || name.contains("..") || name.contains('/') || name.contains('\\') || !name.ends_with(".json") {
+        return Err(format!("Invalid vault filename: {name}"));
+    }
+    Ok(name)
+}
+
 fn handle(req: Request) -> Value {
     match req {
+        Request::ListVaults => {
+            let dir = match vault_dir() {
+                Ok(d) => d,
+                Err(e) => return json!({ "ok": false, "error": e }),
+            };
+            if !dir.exists() {
+                return json!({ "ok": true, "vaults": [] });
+            }
+            let entries = match fs::read_dir(&dir) {
+                Ok(e) => e,
+                Err(e) => return json!({ "ok": false, "error": format!("Read dir: {e}") }),
+            };
+            let mut vaults = Vec::new();
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = match path.file_name().and_then(|n| n.to_str()) {
+                    Some(n) => n.to_string(),
+                    None => continue,
+                };
+                if !name.ends_with(".json") || name.ends_with(".tmp") {
+                    continue;
+                }
+                if let Ok(content) = fs::read_to_string(&path) {
+                    vaults.push(json!({ "name": name, "content": content }));
+                }
+            }
+            json!({ "ok": true, "vaults": vaults })
+        }
         Request::VaultExists => match vault_path() {
             Ok(p) => json!({ "ok": true, "exists": p.exists() }),
             Err(e) => json!({ "ok": false, "error": e }),
         },
-        Request::ReadVault => match vault_path() {
-            Err(e) => json!({ "ok": false, "error": e }),
-            Ok(path) => {
-                if !path.exists() {
-                    return json!({ "ok": true });
-                }
-                match fs::read_to_string(&path) {
-                    Ok(s) => json!({ "ok": true, "blob": s }),
-                    Err(e) => json!({ "ok": false, "error": format!("Read error: {e}") }),
+        Request::ReadVault { name } => {
+            let path_result = match name.as_deref() {
+                Some(n) => sanitize_name(n).map(|n| vault_dir().map(|d| d.join(n))).and_then(|r| r),
+                None => vault_path(),
+            };
+            match path_result {
+                Err(e) => json!({ "ok": false, "error": e }),
+                Ok(path) => {
+                    if !path.exists() {
+                        return json!({ "ok": true });
+                    }
+                    match fs::read_to_string(&path) {
+                        Ok(s) => json!({ "ok": true, "blob": s }),
+                        Err(e) => json!({ "ok": false, "error": format!("Read error: {e}") }),
+                    }
                 }
             }
-        },
+        }
         Request::WriteVault { blob } => match vault_path() {
             Err(e) => json!({ "ok": false, "error": e }),
             Ok(path) => {

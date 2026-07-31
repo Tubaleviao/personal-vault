@@ -73,8 +73,8 @@ import type { PersistedVault } from '../src/vault'
  * Returns null if no vault file exists yet.
  * Throws if the host returned an error.
  */
-export async function nativeReadVault(): Promise<PersistedVault | null> {
-  const res = await sendNative({ type: 'READ_VAULT' })
+export async function nativeReadVault(name?: string): Promise<PersistedVault | null> {
+  const res = await sendNative({ type: 'READ_VAULT', name })
   if (!res.ok) throw new Error(res.error)
   if (!res.blob) return null
   return JSON.parse(res.blob) as PersistedVault
@@ -88,4 +88,23 @@ export async function nativeWriteVault(vault: PersistedVault): Promise<void> {
   const blob = JSON.stringify(vault)
   const res = await sendNative({ type: 'WRITE_VAULT', blob })
   if (!res.ok) throw new Error(res.error)
+}
+
+/**
+ * List all vault files in the desktop vault directory.
+ * Returns an array of { name, vault } for each valid vault file found.
+ */
+export async function nativeListVaults(): Promise<Array<{ name: string; vault: PersistedVault }>> {
+  const res = await sendNative({ type: 'LIST_VAULTS' })
+  if (!res.ok) throw new Error(res.error)
+  const results: Array<{ name: string; vault: PersistedVault }> = []
+  for (const entry of res.vaults ?? []) {
+    try {
+      const parsed = JSON.parse(entry.content) as PersistedVault
+      if (parsed?.header?.version && parsed?.encrypted) {
+        results.push({ name: entry.name, vault: parsed })
+      }
+    } catch { /* skip invalid JSON */ }
+  }
+  return results
 }

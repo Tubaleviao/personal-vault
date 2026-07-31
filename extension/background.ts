@@ -40,7 +40,7 @@ import { syncVault } from '../src/relay'
 import type { RelayConfig } from '../src/relay'
 import { generateMnemonicBundle, restoreFromMnemonic, verifyMnemonicCommitment } from '../src/recovery'
 import { didFromSeed } from '../src/did'
-import { isNativeHostAvailable, nativeReadVault, nativeWriteVault } from './nativeHost'
+import { isNativeHostAvailable, nativeReadVault, nativeWriteVault, nativeListVaults } from './nativeHost'
 
 // ── Native host availability (cached per service-worker lifetime) ──────────────
 
@@ -55,6 +55,9 @@ let _nativeHostAvailable: boolean | null = null
  * Reset to null on lock so each session starts with a fresh discovery.
  */
 let _selectedVaultSource: 'native' | 'local' | null = null
+
+/** For native source: the specific vault filename selected by the picker. */
+let _selectedNativeVaultName: string | null = null
 
 async function useNativeHost(): Promise<boolean> {
   if (_nativeHostAvailable === null) {
@@ -90,8 +93,8 @@ async function loadVaultBlob(): Promise<PersistedVault | null> {
     const result = await chrome.storage.local.get('vault')
     return (result['vault'] as PersistedVault | undefined) ?? null
   }
-  if (await useNativeHost()) {
-    try { return await nativeReadVault() } catch { /* fall through to storage */ }
+  if (_selectedVaultSource === 'native' || await useNativeHost()) {
+    try { return await nativeReadVault(_selectedNativeVaultName ?? undefined) } catch { /* fall through to storage */ }
   }
   const result = await chrome.storage.local.get('vault')
   return (result['vault'] as PersistedVault | undefined) ?? null
@@ -106,9 +109,11 @@ async function discoverVaults(): Promise<VaultListEntry[]> {
 
   if (await useNativeHost()) {
     try {
-      const blob = await nativeReadVault()
-      if (blob?.header) vaults.push({ source: 'native', header: blob.header })
-    } catch { /* host reachable but no vault file */ }
+      const nativeVaults = await nativeListVaults()
+      for (const { name, vault } of nativeVaults) {
+        if (vault?.header) vaults.push({ source: 'native', header: vault.header, name })
+      }
+    } catch { /* host reachable but no vault files */ }
   }
 
   const local = await chrome.storage.local.get('vault')
@@ -324,6 +329,7 @@ async function handleMessage(
       session = null
     }
     _selectedVaultSource = null
+    _selectedNativeVaultName = null
     sendResponse(null)
     return
   }
@@ -625,6 +631,7 @@ async function handleMessage(
     // Ignore mid-session source changes — changing backend while unlocked risks split-brain writes.
     if (!session) {
       _selectedVaultSource = message.source
+      _selectedNativeVaultName = message.name ?? null
     }
     sendResponse(null)
     return

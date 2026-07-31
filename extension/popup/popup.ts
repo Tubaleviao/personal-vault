@@ -326,17 +326,20 @@ function showVaultPickerPanel(vaults: VaultListEntry[]) {
 
     const label = document.createElement('div')
     label.className = 'vault-picker-label'
-    label.textContent = v.source === 'native' ? 'Desktop vault (file on disk)' : 'Browser vault (extension storage)'
+    const friendlyName = v.name
+      ? v.name.replace(/\.json$/, '').replace(/-/g, ' ')
+      : 'Browser vault'
+    label.textContent = v.source === 'native' ? friendlyName : 'Browser vault (extension storage)'
 
     const meta = document.createElement('div')
     meta.className = 'vault-picker-meta'
     const seq = v.header.sequenceNumber ?? 0
-    meta.textContent = `Rev ${seq} · ${v.header.ownerId.slice(0, 12)}`
+    meta.textContent = `Rev ${seq} · ${v.source === 'native' ? 'desktop' : 'browser'} · ${v.header.ownerId.slice(0, 8)}`
 
     item.appendChild(label)
     item.appendChild(meta)
     item.onclick = async () => {
-      await send<BackgroundToPopup>({ type: 'SELECT_VAULT', source: v.source })
+      await send<BackgroundToPopup>({ type: 'SELECT_VAULT', source: v.source, name: v.name })
       showUnlockPanel(v.source)
     }
     vaultPickerList.appendChild(item)

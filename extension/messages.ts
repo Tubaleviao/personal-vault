@@ -246,6 +246,8 @@ export interface MsgCredentialSavePrompt {
 export interface VaultListEntry {
   source: 'native' | 'local'
   header: VaultHeader
+  /** Filename within the vault directory — only set for native source entries. */
+  name?: string
 }
 
 /** Popup asks for all discovered vault sources (no decryption needed). */
@@ -257,6 +259,8 @@ export interface MsgGetVaultList {
 export interface MsgSelectVault {
   type: 'SELECT_VAULT'
   source: 'native' | 'local'
+  /** For native source: the specific vault filename to read. */
+  name?: string
 }
 
 /** Background returns the list of discovered vault sources. */
@@ -302,6 +306,7 @@ export interface MsgNativeHostStatus {
 /** Read the vault blob from the desktop app's file storage. */
 export interface NativeMsgReadVault {
   type: 'READ_VAULT'
+  name?: string
 }
 
 /** Write the sealed vault blob to the desktop app's file storage. */
@@ -315,11 +320,17 @@ export interface NativeMsgVaultExists {
   type: 'VAULT_EXISTS'
 }
 
+/** List all vault files in the desktop vault directory. */
+export interface NativeMsgListVaults {
+  type: 'LIST_VAULTS'
+}
+
 /** Response from the native host for READ_VAULT / VAULT_EXISTS. */
 export interface NativeResponseOk {
   ok: true
-  blob?: string   // present on READ_VAULT response
+  blob?: string    // present on READ_VAULT response
   exists?: boolean // present on VAULT_EXISTS response
+  vaults?: Array<{ name: string; content: string }> // present on LIST_VAULTS response
 }
 
 export interface NativeResponseErr {
@@ -327,7 +338,7 @@ export interface NativeResponseErr {
   error: string
 }
 
-export type NativeRequest = NativeMsgReadVault | NativeMsgWriteVault | NativeMsgVaultExists
+export type NativeRequest = NativeMsgReadVault | NativeMsgWriteVault | NativeMsgVaultExists | NativeMsgListVaults
 export type NativeResponse = NativeResponseOk | NativeResponseErr
 
 // ── Union types ───────────────────────────────────────────────────────────────
