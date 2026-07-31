@@ -191,21 +191,28 @@ async function syncNow() {
 // ── Transition helpers ────────────────────────────────────────────────────────
 
 /**
- * Fetch approvals + relay config within the same SW activation that just
- * unlocked, then show the unlocked view. Avoids a second GET_VAULT_STATUS
- * round-trip that would race against the MV3 SW suspension window.
+ * Show the unlocked vault view immediately using data already in hand from the
+ * unlock/create response, then fill in secondary data (approvals, relay config)
+ * with best-effort follow-up messages. Never calls showLocked() — if secondary
+ * messages fail because the SW suspended, the vault view stays shown.
  */
 async function transitionToUnlocked(ownerDid: string, activeSource: 'native' | 'local' | null) {
+  // Show the vault immediately — don't wait for secondary data.
+  showUnlocked(ownerDid, [])
+
+  // Fetch secondary data with individual error handling so a suspended SW on
+  // any one of these doesn't abort the transition.
   const [approvalsRes, relayRes, vaultListRes] = await Promise.all([
-    send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
-    send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
-    send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
+    send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }).catch(() => null) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
+    send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }).catch(() => null) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
+    send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }).catch(() => null) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
   ])
 
-  showUnlocked(ownerDid, approvalsRes?.approvals ?? [])
-  if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
+  // Backfill approvals if we got them
+  if (approvalsRes?.type === 'APPROVALS_LIST') renderApprovals(approvalsRes.approvals)
+  if (relayRes?.type === 'RELAY_CONFIG') renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 
-  const vaults = vaultListRes?.vaults ?? []
+  const vaults = (vaultListRes?.type === 'VAULT_LIST' ? vaultListRes.vaults : null) ?? []
   const mergeTarget = vaults.find(v => v.source !== activeSource)
   if (mergeTarget) {
     mergeSourceLabel.textContent = mergeTarget.source === 'local' ? 'browser storage' : 'desktop vault file'
@@ -360,11 +367,10 @@ unlockForm.addEventListener('submit', async e => {
 
   passphraseInput.value = ''
   mnemonicInput.value = ''
-  if (res.ownerDid) {
-    await transitionToUnlocked(res.ownerDid, res.activeSource ?? null)
-  } else {
-    await init()
-  }
+  // Use ownerDid from the response directly — avoids a GET_VAULT_STATUS round-trip
+  // that would race against MV3 SW suspension. Fall back to 'unknown' so we still
+  // show the vault view even if the field was missing (shouldn't happen for valid vaults).
+  await transitionToUnlocked(res.ownerDid ?? 'unknown', res.activeSource ?? null)
 })
 
 lockBtn.addEventListener('click', lockVault)
