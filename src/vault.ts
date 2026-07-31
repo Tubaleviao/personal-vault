@@ -247,6 +247,14 @@ export class Vault {
     return Object.values(this._state.claims)
   }
 
+  /** Import a claim from another vault, preserving its original ID for deduplication. */
+  importClaim(claim: Claim): void {
+    this._assertUnlocked()
+    if (this._state.claims[claim.id]) return
+    this._state.claims[claim.id] = { ...claim, ownerId: this._state.owner.id }
+    this._appendAudit('claim-added', 'owner', null, { claimType: claim.type })
+  }
+
   updateClaim(id: string, patch: Partial<Omit<Claim, 'id' | 'ownerId'>>): Claim {
     this._assertUnlocked()
     const claim = this._state.claims[id]

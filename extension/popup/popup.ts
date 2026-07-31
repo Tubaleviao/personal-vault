@@ -8,7 +8,7 @@
  *   - Lock the vault
  */
 
-import type { PopupToBackground, BackgroundToPopup } from '../messages'
+import type { PopupToBackground, BackgroundToPopup, VaultListEntry } from '../messages'
 import type { SiteApproval } from '../../src/form-filler'
 import { isSiteApprovalValid } from '../../src/form-filler'
 
@@ -38,6 +38,18 @@ const saveRelayBtn = document.getElementById('save-relay-btn')!
 const syncBtn = document.getElementById('sync-btn')!
 const syncStatus = document.getElementById('sync-status')!
 const nativeBadge = document.getElementById('native-badge')!
+
+// Vault picker UI
+const vaultPickerPanel = document.getElementById('vault-picker-view')!
+const vaultPickerList = document.getElementById('vault-picker-list')!
+const pickerCreateBtn = document.getElementById('picker-create-btn')!
+
+// Merge offer UI
+const mergeOffer = document.getElementById('merge-offer')!
+const mergeSourceLabel = document.getElementById('merge-source-label')!
+const mergeForm = document.getElementById('merge-form') as HTMLFormElement
+const mergePassphrase = document.getElementById('merge-passphrase') as HTMLInputElement
+const mergeStatus = document.getElementById('merge-status')!
 
 // Create-vault UI
 const unlockPanel = document.getElementById('unlock-view')!
@@ -169,41 +181,106 @@ async function syncNow() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
-  const statusRes = await send<BackgroundToPopup>({ type: 'GET_VAULT_STATUS' }) as { type: 'VAULT_STATUS'; unlocked: boolean; ownerDid: string | null } | null
+  const statusRes = await send<BackgroundToPopup>({ type: 'GET_VAULT_STATUS' }) as { type: 'VAULT_STATUS'; unlocked: boolean; ownerDid: string | null; activeSource: 'native' | 'local' | null } | null
 
-  if (!statusRes || !statusRes.unlocked || !statusRes.ownerDid) {
-    showLocked()
+  if (statusRes?.unlocked && statusRes.ownerDid) {
+    const [approvalsRes, relayRes, vaultListRes] = await Promise.all([
+      send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
+      send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
+      send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
+    ])
+
+    showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [])
+    if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
+
+    // Show merge offer if a second vault source exists alongside the active one
+    const vaults = vaultListRes?.vaults ?? []
+    const activeSource = statusRes.activeSource
+    const mergeTarget = vaults.find(v => v.source !== activeSource)
+    if (mergeTarget) {
+      mergeSourceLabel.textContent = mergeTarget.source === 'local' ? 'browser storage' : 'desktop vault file'
+      mergeOffer.dataset['source'] = mergeTarget.source
+      mergeOffer.style.display = 'block'
+    } else {
+      mergeOffer.style.display = 'none'
+    }
     return
   }
 
-  const [approvalsRes, relayRes] = await Promise.all([
-    send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
-    send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
-  ])
+  // Locked — discover vaults to decide which panel to show
+  showLocked()
+  const vaultListRes = await send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }) as { type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null
+  const vaults = vaultListRes?.vaults ?? []
 
-  showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [])
-  if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
+  if (vaults.length === 0) {
+    showCreatePanel()
+  } else if (vaults.length === 1) {
+    await send<BackgroundToPopup>({ type: 'SELECT_VAULT', source: vaults[0].source })
+    showUnlockPanel()
+  } else {
+    showVaultPickerPanel(vaults)
+  }
 }
 
 // ── Create-vault flow ─────────────────────────────────────────────────────────
 
 function showUnlockPanel() {
+  vaultPickerPanel.style.display = 'none'
   unlockPanel.style.display = 'block'
   createPanel.style.display = 'none'
   mnemonicPanel.style.display = 'none'
 }
 
 function showCreatePanel() {
+  vaultPickerPanel.style.display = 'none'
   unlockPanel.style.display = 'none'
   createPanel.style.display = 'block'
   mnemonicPanel.style.display = 'none'
 }
 
 function showMnemonicPanel(mnemonic: string) {
+  vaultPickerPanel.style.display = 'none'
   unlockPanel.style.display = 'none'
   createPanel.style.display = 'none'
   mnemonicPanel.style.display = 'block'
   mnemonicDisplay.textContent = mnemonic
+}
+
+function showVaultPickerPanel(vaults: VaultListEntry[]) {
+  vaultPickerList.innerHTML = ''
+  for (const v of vaults) {
+    const item = document.createElement('button')
+    item.className = 'vault-picker-item'
+    item.style.width = '100%'
+    item.style.textAlign = 'left'
+    item.style.cursor = 'pointer'
+    item.style.border = '1px solid #334155'
+    item.style.background = '#1e293b'
+    item.style.borderRadius = '6px'
+    item.style.padding = '10px 12px'
+
+    const label = document.createElement('div')
+    label.className = 'vault-picker-label'
+    label.textContent = v.source === 'native' ? 'Desktop vault (file on disk)' : 'Browser vault (extension storage)'
+
+    const meta = document.createElement('div')
+    meta.className = 'vault-picker-meta'
+    const seq = v.header.sequenceNumber ?? 0
+    meta.textContent = `Revision ${seq} · owner ${v.header.ownerId.slice(0, 8)}`
+
+    item.appendChild(label)
+    item.appendChild(meta)
+    item.onclick = async () => {
+      await send<BackgroundToPopup>({ type: 'SELECT_VAULT', source: v.source })
+      showUnlockPanel()
+    }
+    vaultPickerList.appendChild(item)
+  }
+
+  vaultPickerPanel.style.display = 'block'
+  unlockPanel.style.display = 'none'
+  createPanel.style.display = 'none'
+  mnemonicPanel.style.display = 'none'
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -272,6 +349,35 @@ copyMnemonicBtn.addEventListener('click', () => {
 
 mnemonicDoneBtn.addEventListener('click', () => {
   init().catch(() => showLocked())
+})
+
+pickerCreateBtn.addEventListener('click', showCreatePanel)
+
+mergeForm.addEventListener('submit', async e => {
+  e.preventDefault()
+  const passphrase = mergePassphrase.value
+  if (!passphrase) return
+
+  const source = mergeOffer.dataset['source'] as 'native' | 'local' | undefined
+  if (!source) return
+
+  mergeStatus.textContent = 'Merging…'
+  mergeStatus.style.color = '#64748b'
+
+  const res = await send<BackgroundToPopup>({ type: 'MERGE_VAULT', source, passphrase }) as { type: 'MERGE_RESULT'; ok: boolean; added: number; error?: string } | null
+  mergePassphrase.value = ''
+
+  if (!res?.ok) {
+    mergeStatus.textContent = `Error: ${res?.error ?? 'Unknown error'}`
+    mergeStatus.style.color = '#f87171'
+    return
+  }
+
+  mergeStatus.style.color = '#22c55e'
+  mergeStatus.textContent = res.added > 0
+    ? `Merged ${res.added} claim${res.added === 1 ? '' : 's'} successfully`
+    : 'No new claims to merge'
+  mergeOffer.style.display = 'none'
 })
 
 // Show whether the desktop native host is reachable

@@ -82,6 +82,16 @@
       background: #1e293b; color: #475569; white-space: nowrap;
     }
     #native-badge.connected { background: #14532d; color: #4ade80 }
+
+    .vault-picker-item {
+      background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+      padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;
+      cursor: pointer; transition: border-color 0.15s;
+    }
+    .vault-picker-item:hover { border-color: #3b82f6 }
+    .vault-picker-label { font-size: 12px; font-weight: 600; color: #7dd3fc }
+    .vault-picker-meta { font-size: 10px; color: #64748b }
+    #vault-picker-view { display: none }
   </style>
 </head>
 <body>
@@ -94,6 +104,14 @@
 
   <!-- Unlock / Create form (shown when vault is locked) -->
   <section id="locked-view">
+    <!-- Vault picker (shown when multiple vault sources are found) -->
+    <div id="vault-picker-view">
+      <h2>Choose a vault</h2>
+      <p style="color:#64748b;font-size:11px;margin-bottom:8px">Multiple vaults found. Select one to unlock.</p>
+      <div id="vault-picker-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+      <button id="picker-create-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:block">Create a new vault instead</button>
+    </div>
+
     <!-- Unlock form -->
     <div id="unlock-view">
       <h2>Unlock Vault</h2>
@@ -143,6 +161,17 @@
         <button id="sync-btn" class="btn-primary" style="flex:1">Sync now</button>
       </div>
       <div id="sync-status" style="font-size:11px;color:#64748b;min-height:16px"></div>
+    </div>
+
+    <!-- Merge offer (shown when a secondary vault exists after unlock) -->
+    <div id="merge-offer" style="display:none;margin-top:14px">
+      <h2>Import from other vault</h2>
+      <p style="color:#94a3b8;font-size:11px;margin:4px 0 8px">A vault was also found in <strong id="merge-source-label">browser storage</strong>. Enter its passphrase to merge its claims into this vault.</p>
+      <form id="merge-form" autocomplete="off" style="display:flex;flex-direction:column;gap:6px">
+        <input type="password" id="merge-passphrase" placeholder="Other vault's passphrase" style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:7px 10px;width:100%;outline:none">
+        <button type="submit" class="btn-primary">Merge claims</button>
+      </form>
+      <div id="merge-status" style="font-size:11px;color:#64748b;margin-top:4px;min-height:16px"></div>
     </div>
 
     <button id="lock-btn" class="btn-danger" style="margin-top:14px;width:100%">Lock vault</button>

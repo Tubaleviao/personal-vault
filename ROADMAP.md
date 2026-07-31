@@ -147,11 +147,11 @@ Currently the extension and desktop app can each have separate vaults (one in `c
 
 ### Build steps
 
-- [ ] `discoverVaults()` in background — headers only, no decryption
-- [ ] `SELECT_VAULT` / `GET_VAULT_LIST` messages in `messages.ts`
-- [ ] Popup: skip unlock form when no vaults exist, show picker when multiple exist
-- [ ] Desktop: vault picker on unlock screen
-- [ ] Migration helper: merge claims from secondary vault after unlock
+- [x] `discoverVaults()` in background — headers only, no decryption
+- [x] `SELECT_VAULT` / `GET_VAULT_LIST` messages in `messages.ts`
+- [x] Popup: skip unlock form when no vaults exist, show picker when multiple exist
+- [x] Desktop: vault picker on unlock screen
+- [x] Migration helper: merge claims from secondary vault after unlock
 
 ---
 

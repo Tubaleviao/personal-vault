@@ -6,17 +6,37 @@ use tauri::Manager;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-fn vault_path() -> Result<PathBuf, String> {
+fn vault_dir() -> Result<PathBuf, String> {
     let base = dirs_next::data_local_dir()
         .ok_or_else(|| "Could not determine data directory".to_string())?;
-    Ok(base.join("personal-vault").join("vault.json"))
+    Ok(base.join("personal-vault"))
+}
+
+fn vault_path() -> Result<PathBuf, String> {
+    Ok(vault_dir()?.join("vault.json"))
+}
+
+/// Reject filenames that could escape the vault directory.
+fn sanitize_vault_filename(name: &str) -> Result<&str, String> {
+    if name.is_empty()
+        || name.contains("..")
+        || name.contains('/')
+        || name.contains('\\')
+        || !name.ends_with(".json")
+    {
+        return Err(format!("Invalid vault filename: {name}"));
+    }
+    Ok(name)
 }
 
 /// Read the vault JSON blob from the platform data directory.
-/// Returns null (JSON null string) if the file does not exist yet.
+/// Pass `name` to read a specific file; defaults to vault.json.
+/// Returns null (None) if the file does not exist yet.
 #[tauri::command]
-pub fn read_vault_file() -> Result<Option<String>, String> {
-    let path = vault_path()?;
+pub fn read_vault_file(name: Option<String>) -> Result<Option<String>, String> {
+    let filename = name.as_deref().unwrap_or("vault.json");
+    sanitize_vault_filename(filename)?;
+    let path = vault_dir()?.join(filename);
     if !path.exists() {
         return Ok(None);
     }
@@ -26,14 +46,16 @@ pub fn read_vault_file() -> Result<Option<String>, String> {
 }
 
 /// Write the sealed vault blob to the platform data directory.
+/// Pass `name` to write a specific file; defaults to vault.json.
 /// Creates the directory if it does not exist.
-/// Uses a write-to-tmp + rename pattern so a crash mid-write never corrupts vault.json.
+/// Uses a write-to-tmp + rename pattern so a crash mid-write never corrupts the vault.
 #[tauri::command]
-pub fn write_vault_file(blob: String) -> Result<(), String> {
-    let path = vault_path()?;
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("Failed to create vault dir: {e}"))?;
-    }
+pub fn write_vault_file(blob: String, name: Option<String>) -> Result<(), String> {
+    let filename = name.as_deref().unwrap_or("vault.json");
+    sanitize_vault_filename(filename)?;
+    let dir = vault_dir()?;
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create vault dir: {e}"))?;
+    let path = dir.join(filename);
     let tmp_path = path.with_extension("json.tmp");
     {
         let mut file = fs::File::create(&tmp_path)
@@ -46,11 +68,47 @@ pub fn write_vault_file(blob: String) -> Result<(), String> {
     fs::rename(&tmp_path, &path).map_err(|e| format!("Failed to replace vault file: {e}"))
 }
 
-/// Check whether a vault file exists (used on startup to decide create vs. open).
+/// Check whether the default vault.json exists (used on startup to decide create vs. open).
 #[tauri::command]
 pub fn vault_file_exists() -> Result<bool, String> {
-    let path = vault_path()?;
-    Ok(path.exists())
+    Ok(vault_path()?.exists())
+}
+
+/// List all *.json vault files in the vault directory.
+/// Returns an array of { name, content } objects; invalid JSON files are skipped.
+/// .tmp files are excluded.
+#[tauri::command]
+pub fn list_vault_files() -> Result<Vec<serde_json::Value>, String> {
+    let dir = vault_dir()?;
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut results = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|e| format!("Failed to read vault dir: {e}"))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Dir entry error: {e}"))?;
+        let path = entry.path();
+
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+
+        if !name.ends_with(".json") || name.ends_with(".tmp") {
+            continue;
+        }
+
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        results.push(serde_json::json!({ "name": name, "content": content }));
+    }
+
+    Ok(results)
 }
 
 /// Install the native messaging host so the browser extension can reach this app's vault file.

@@ -7,6 +7,7 @@
  */
 
 import type { FillMap, SiteApproval, CredentialEntry } from '../src/form-filler'
+import type { VaultHeader } from '../src/vault'
 
 // ── Content → Background ──────────────────────────────────────────────────────
 
@@ -165,6 +166,8 @@ export interface MsgVaultStatus {
   type: 'VAULT_STATUS'
   unlocked: boolean
   ownerDid: string | null
+  /** Which storage backend holds the currently active vault. */
+  activeSource: 'native' | 'local' | null
 }
 
 /** Response to an UNLOCK_VAULT request. */
@@ -232,6 +235,48 @@ export interface MsgCredentialSavePrompt {
   username: string
   /** present = "Update saved password?", absent = "Save password?" */
   existingClaimId?: string
+}
+
+// ── Vault discovery & selection ───────────────────────────────────────────────
+
+export interface VaultListEntry {
+  source: 'native' | 'local'
+  header: VaultHeader
+}
+
+/** Popup asks for all discovered vault sources (no decryption needed). */
+export interface MsgGetVaultList {
+  type: 'GET_VAULT_LIST'
+}
+
+/** Popup tells background which storage source to use for the next unlock. */
+export interface MsgSelectVault {
+  type: 'SELECT_VAULT'
+  source: 'native' | 'local'
+}
+
+/** Background returns the list of discovered vault sources. */
+export interface MsgVaultList {
+  type: 'VAULT_LIST'
+  vaults: VaultListEntry[]
+}
+
+// ── Vault merge ───────────────────────────────────────────────────────────────
+
+/** Popup asks background to merge claims from a secondary vault into the active one. */
+export interface MsgMergeVault {
+  type: 'MERGE_VAULT'
+  /** The storage source that holds the other vault. */
+  source: 'native' | 'local'
+  passphrase: string
+}
+
+/** Background responds to MERGE_VAULT with how many new claims were imported. */
+export interface MsgMergeResult {
+  type: 'MERGE_RESULT'
+  ok: boolean
+  added: number
+  error?: string
 }
 
 // ── Popup → Background: native host status ────────────────────────────────────
@@ -314,6 +359,9 @@ export type PopupToBackground =
   | MsgSetRelayConfig
   | MsgSyncVault
   | MsgGetNativeHostStatus
+  | MsgGetVaultList
+  | MsgSelectVault
+  | MsgMergeVault
 
 export type BackgroundToPopup =
   | MsgApprovalsListResult
@@ -323,3 +371,5 @@ export type BackgroundToPopup =
   | MsgRelayConfig
   | MsgSyncResult
   | MsgNativeHostStatus
+  | MsgVaultList
+  | MsgMergeResult
