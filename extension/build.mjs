@@ -27,9 +27,11 @@ const sharedConfig = {
   platform: 'browser',
   target: ['chrome120'],
   format: 'esm',
-  // Buffer polyfill for base64url operations
-  inject: [],
+  // Inject the Buffer polyfill so bip39 (which uses Buffer as a Node global) works
+  // in the browser context. The define entry maps the global name to the export.
+  inject: ['./extension/buffer-polyfill.js'],
   define: {
+    'Buffer': 'Buffer',
     // Node crypto built-in: randomUUID is available as crypto.randomUUID() in browsers
     'process.env.NODE_ENV': '"production"',
   },
@@ -63,13 +65,10 @@ export const createHash = (algo) => {
   const chunks = []
   return {
     update(data) { chunks.push(typeof data === 'string' ? new TextEncoder().encode(data) : data); return this },
-    digest(enc) {
-      const merged = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0))
-      let offset = 0
-      for (const c of chunks) { merged.set(c, offset); offset += c.length }
-      return crypto.subtle.digestSync
-        ? Buffer.from(crypto.subtle.digestSync('SHA-256', merged)).toString(enc)
-        : '(async-hash-not-supported-sync)'
+    digest(_enc) {
+      // Synchronous SHA-256 is not available in browser WebCrypto; callers in the
+      // extension code path use digestAsync() instead.
+      return '(sync-hash-unavailable-in-browser)'
     },
     async digestAsync(enc) {
       const merged = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0))
