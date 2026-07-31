@@ -156,12 +156,12 @@ src/form-filler.ts         — Vault-side library shared by the extension.
 | Purpose | Primitive | Source |
 |---|---|---|
 | Symmetric encryption | XChaCha20-Poly1305 | libsodium-wrappers (CJS) |
-| Key derivation | scrypt N=16384, r=8, p=1 | Node built-in `crypto` |
+| Key derivation | scrypt N=65536 (2^16), r=8, p=1 | @noble/hashes scrypt |
 | Signing / DID keys | Ed25519 | libsodium-wrappers |
 | Hashing | SHA-256 | Node built-in `crypto` |
 | Recovery phrase | BIP-39 128-bit (12 words) | bip39 |
 
-> **Note:** scrypt N is currently 16384 (2^14) to stay within Node 24's default memory limit. Production targets 2^16 or higher.
+> **Note:** New vaults use scrypt N=65536 (2^16). Old vaults sealed at N=16384 (2^14) are read transparently via `VaultHeader.scryptN`; N below 16384 is rejected. Key derivation now uses `@noble/hashes/scrypt` instead of Node built-in `crypto`.
 
 > **Note:** `libsodium-wrappers` ESM entry is broken in this environment (missing `libsodium.mjs`). Only the CJS entry (`dist/modules/libsodium-wrappers.js`) works. The project is set to `"type": "commonjs"` for this reason.
 
@@ -178,18 +178,20 @@ src/form-filler.ts         — Vault-side library shared by the extension.
 | Phase 3, Step 3.2.1 | Vault core: create/open/lock, claims CRUD, encrypted persistence | `vault.ts`, `crypto.ts` |
 | Phase 3, Step 3.2.2 | Backup & restore via BIP-39 recovery phrase | `recovery.ts` |
 | Phase 3, Step 3.2.3 | Push sharing: signed encrypted bundle, verifier with badges | `sharing.ts` |
-| Phase 2, Step 2.3 | DID identity layer: did:key generation, VC import stub, SD-JWT framing | `did.ts` |
+| Phase 2, Step 2.3 | DID identity layer: did:key generation, VC proof verification, full SD-JWT (`issueSDJWT`/`verifySDJWT`) | `did.ts` |
 | Phase 3, Step 3.2.5 | Audit log screen data: hash chain, tamper detection, display format | `audit.ts` |
 | Phase 2, Steps 2.4 / Phase 3, Step 3.2.7 | Grant consent layer: create, sign, validate, revoke | `consent.ts` |
-| Phase 3, Step 3.2.4 | Browser extension: form-filler with per-site/per-field approval, popup, MV3 service worker | `extension/`, `src/form-filler.ts` |
+| Phase 3, Step 3.2.4 | Browser extension: form-filler with per-site/per-field approval, credential capture, popup, MV3 service worker | `extension/`, `src/form-filler.ts` |
+| Phase 3, Step 3.2.6 | Sync relay: Cloudflare Workers + KV, Ed25519-authenticated push/pull, multi-device sync | `relay/worker.ts`, `src/relay.ts` |
+| Phase 3, Step 3.3 | Security hygiene: STRIDE threat model, CI audit, scrypt N upgrade to 2^16 | `THREAT_MODEL.md`, `.github/workflows/ci.yml` |
+| Phase 3.5 | Desktop app: Tauri v2 — unlock/claims/audit/sync screens, native messaging host auto-install | `desktop/` |
 
 ### Pending
 
 | Step | What |
 |---|---|
-| Phase 3, Step 3.2.6 | **Sync relay + second device:** encrypted-blob relay (VPS or Cloudflare Workers + R2), pull grants, multi-device sync |
-| Phase 3, Step 3.2.7 (partial) | Pull grants (revocation is done; relay-side enforcement is not) |
-| Phase 3, Step 3.3 | Security hygiene: STRIDE threat model doc, CI dependency audit, plan for external crypto review |
+| Phase 3.5.1 | Vault discovery & multi-vault picker (extension + desktop) |
+| Phase 3.6 | Chrome Web Store publishing |
 | Phase 4 | Validation: dogfood, 10 real users, one real data consumer |
 | Phase 5 | Distribution: open-source, monetisation, eIDAS/Solid interop |
-| Crypto | SD-JWT full spec conformance (currently a framing stub in `did.ts`); VC proof verification in `importVC()`; scrypt N upgrade to 2^16 |
+| Crypto | Post-quantum signatures (ML-DSA), external crypto review |

@@ -68,6 +68,18 @@ The key difference: password managers store and replay credentials on your behal
 - "Fill once" or "Always allow" — persistent approvals are stored in extension local storage and backed by a vault grant in the audit log
 - Revoke any site's access from the popup at any time; revoked sites receive `APPROVAL_REVOKED` on the next visit instead of being re-prompted
 - The vault is unlocked in the extension popup with your passphrase; locking zeroes the master key from the service worker's memory
+- **Credential capture**: detects login form submissions, prompts to save username/password as encrypted vault claims, and fills saved credentials on return visits — a full password-manager flow without any third-party sync
+
+**Desktop app (Tauri — Windows / macOS / Linux)**
+- Native app with the full vault UI: unlock/create, claims list, audit log viewer, and sync panel
+- The Rust backend is a thin file I/O layer only — all crypto runs in the WebView as the same TypeScript library used by the extension
+- Vault file stored at the OS-standard data directory; the desktop app owns the file across browser profile wipes
+- Native messaging host auto-installed on first launch — the browser extension delegates vault reads to the desktop app over Chrome's Native Messaging API
+
+**Cross-device sync**
+- Encrypted blob relay via Cloudflare Workers + KV — the relay stores only ciphertext, never plaintext
+- Ed25519-authenticated push/pull: requests are signed with the owner keypair; the relay rejects unauthenticated writes
+- Pull from any device with your passphrase and recovery phrase; the encrypted blob is merged client-side
 
 ---
 
@@ -239,11 +251,16 @@ Once loaded:
 | Tamper-evident audit log | ✅ Done |
 | Consent & grant layer (create, validate, revoke) | ✅ Done |
 | Browser extension (auto-fill with per-site approval) | ✅ Done |
+| Browser extension — credential capture (password manager) | ✅ Done |
 | Cross-device sync relay (Cloudflare Workers + KV) | ✅ Done |
-| Desktop app (Tauri — Windows / macOS / Linux) | 🔜 Next |
-| Full SD-JWT spec conformance | 🔜 Planned |
-| VC proof verification in `importVC()` | 🔜 Planned |
-| STRIDE threat model + external crypto review | 🔜 Planned |
+| Desktop app (Tauri — Windows / macOS / Linux) | ✅ Done |
+| Full SD-JWT spec conformance (`issueSDJWT` / `verifySDJWT`) | ✅ Done |
+| VC proof verification in `importVC()` (Ed25519Signature2020) | ✅ Done |
+| scrypt N upgrade to 2^16 for new vaults | ✅ Done |
+| STRIDE threat model document | ✅ Done |
+| Vault discovery & multi-vault picker | 🔜 Next |
+| Chrome Web Store publishing | 🔜 Planned |
+| External cryptography review | 🔜 Planned |
 | Mobile apps (iOS, Android) | 🔜 Planned |
 
 See [ROADMAP.md](ROADMAP.md) for the full build plan with implementation detail.
@@ -255,7 +272,7 @@ See [ROADMAP.md](ROADMAP.md) for the full build plan with implementation detail.
 | Purpose | Primitive |
 |---|---|
 | Symmetric encryption | XChaCha20-Poly1305 (libsodium) |
-| Key derivation | scrypt N=16384, r=8, p=1 (Node built-in) |
+| Key derivation | scrypt N=65536 (2^16), r=8, p=1 (Node built-in) |
 | Signing / DID keys | Ed25519 (libsodium) |
 | Hashing | SHA-256 (Node built-in) |
 | Recovery phrase | BIP-39 128-bit entropy (12 words) |
@@ -303,14 +320,15 @@ An adversary can copy your encrypted vault blob today and wait for quantum hardw
 
 ### Planned security improvements
 
-| Improvement | Notes |
-|---|---|
-| Replace Ed25519 with a post-quantum signature scheme | ML-DSA (FIPS 204 / CRYSTALS-Dilithium) is the recommended target — lattice-based, NIST-standardized, drop-in replacement for signing |
-| Hybrid signatures during migration | Sign with both Ed25519 + ML-DSA; both must verify. Protects against classical and quantum attackers simultaneously during the transition period |
-| Upgrade scrypt N to 2^16 | Currently 2^14 to stay within Node's default memory limits. Higher N makes brute-force passphrase attacks more expensive |
-| STRIDE threat model document | Formal analysis of all trust boundaries, attacker capabilities, and mitigations |
-| External cryptography review | Independent audit of the crypto primitives and their usage before any production deployment |
-| SD-JWT full spec conformance | Current `frameSDJWT()` is a stub; full conformance adds selective disclosure without revealing the full claim set |
+| Improvement | Status | Notes |
+|---|---|---|
+| Upgrade scrypt N to 2^16 | ✅ Done | New vaults use N=65536; old vaults opened at their stored N and re-sealed at 2^16 on next write |
+| STRIDE threat model document | ✅ Done | `THREAT_MODEL.md` covers all trust boundaries, attacker capabilities, and mitigations |
+| SD-JWT full spec conformance | ✅ Done | `issueSDJWT()` / `verifySDJWT()` implement the compact `~`-separated format with per-claim salt disclosures and SHA-256 digests |
+| VC proof verification in `importVC()` | ✅ Done | `verifyVCProof()` checks Ed25519Signature2020 proofs; claims get `verification: 'verified'` only on a valid cryptographic check |
+| Replace Ed25519 with a post-quantum signature scheme | Planned | ML-DSA (FIPS 204 / CRYSTALS-Dilithium) is the recommended target — lattice-based, NIST-standardized, drop-in replacement for signing |
+| Hybrid signatures during migration | Planned | Sign with both Ed25519 + ML-DSA; both must verify. Protects against classical and quantum attackers simultaneously during the transition period |
+| External cryptography review | Planned | Independent audit of the crypto primitives and their usage before any production deployment |
 
 ---
 
