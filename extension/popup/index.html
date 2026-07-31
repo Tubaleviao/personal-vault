@@ -104,24 +104,30 @@
 
   <!-- Unlock / Create form (shown when vault is locked) -->
   <section id="locked-view">
-    <!-- Vault picker (shown when multiple vault sources are found) -->
+    <!-- Vault picker (shown when vaults are found) -->
     <div id="vault-picker-view">
-      <h2>Choose a vault</h2>
-      <p style="color:#64748b;font-size:11px;margin-bottom:8px">Multiple vaults found. Select one to unlock.</p>
+      <h2>Your vaults</h2>
+      <p id="vault-picker-subtitle" style="color:#64748b;font-size:11px;margin-bottom:8px">Select a vault to unlock.</p>
       <div id="vault-picker-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
       <button id="picker-create-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:block">Create a new vault instead</button>
     </div>
 
     <!-- Unlock form -->
     <div id="unlock-view">
-      <h2>Unlock Vault</h2>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <h2 style="margin-bottom:0">Unlock Vault</h2>
+        <span id="vault-source-badge" style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:4px;background:#1e293b;color:#7dd3fc;white-space:nowrap"></span>
+      </div>
       <form id="unlock-form" autocomplete="off">
         <input type="password" id="passphrase" placeholder="Passphrase" autofocus>
         <input type="password" id="mnemonic-input" placeholder="Recovery phrase (optional — needed for sync)">
         <div id="error-msg"></div>
         <button type="submit" class="btn-primary">Unlock</button>
       </form>
-      <button id="toggle-create">No vault yet? Create one</button>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        <button id="back-to-picker" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:none">← Back</button>
+        <button id="toggle-create" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">No vault yet? Create one</button>
+      </div>
     </div>
 
     <!-- Create vault form -->

@@ -42,7 +42,12 @@ const nativeBadge = document.getElementById('native-badge')!
 // Vault picker UI
 const vaultPickerPanel = document.getElementById('vault-picker-view')!
 const vaultPickerList = document.getElementById('vault-picker-list')!
+const vaultPickerSubtitle = document.getElementById('vault-picker-subtitle')!
 const pickerCreateBtn = document.getElementById('picker-create-btn')!
+
+// Unlock panel extras
+const vaultSourceBadge = document.getElementById('vault-source-badge')!
+const backToPickerBtn = document.getElementById('back-to-picker')!
 
 // Merge offer UI
 const mergeOffer = document.getElementById('merge-offer')!
@@ -131,6 +136,11 @@ function showLocked() {
   didShort.textContent = ''
   lockedView.style.display = 'block'
   unlockedView.style.display = 'none'
+  // Reset all child panels to a clean state; init() will show the right one.
+  vaultPickerPanel.style.display = 'none'
+  unlockPanel.style.display = 'none'
+  createPanel.style.display = 'none'
+  mnemonicPanel.style.display = 'none'
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -180,6 +190,9 @@ async function syncNow() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+/** Vaults discovered in the last init() call — used by back-to-picker. */
+let _discoveredVaults: VaultListEntry[] = []
+
 async function init() {
   const statusRes = await send<BackgroundToPopup>({ type: 'GET_VAULT_STATUS' }) as { type: 'VAULT_STATUS'; unlocked: boolean; ownerDid: string | null; activeSource: 'native' | 'local' | null } | null
 
@@ -211,24 +224,32 @@ async function init() {
   showLocked()
   const vaultListRes = await send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }) as { type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null
   const vaults = vaultListRes?.vaults ?? []
+  _discoveredVaults = vaults
 
   if (vaults.length === 0) {
     showCreatePanel()
-  } else if (vaults.length === 1) {
-    await send<BackgroundToPopup>({ type: 'SELECT_VAULT', source: vaults[0].source })
-    showUnlockPanel()
   } else {
+    // Always show the picker so the user can see which vault they're unlocking.
     showVaultPickerPanel(vaults)
   }
 }
 
 // ── Create-vault flow ─────────────────────────────────────────────────────────
 
-function showUnlockPanel() {
+function showUnlockPanel(source?: 'native' | 'local') {
   vaultPickerPanel.style.display = 'none'
   unlockPanel.style.display = 'block'
   createPanel.style.display = 'none'
   mnemonicPanel.style.display = 'none'
+  if (source) {
+    vaultSourceBadge.textContent = source === 'native' ? 'Desktop' : 'Browser'
+    vaultSourceBadge.style.display = 'inline'
+  } else {
+    vaultSourceBadge.textContent = ''
+    vaultSourceBadge.style.display = 'none'
+  }
+  // Show back button only if there are vaults to go back to
+  backToPickerBtn.style.display = _discoveredVaults.length > 0 ? 'inline' : 'none'
 }
 
 function showCreatePanel() {
@@ -248,6 +269,10 @@ function showMnemonicPanel(mnemonic: string) {
 
 function showVaultPickerPanel(vaults: VaultListEntry[]) {
   vaultPickerList.innerHTML = ''
+  vaultPickerSubtitle.textContent = vaults.length === 1
+    ? 'One vault found. Click it to unlock.'
+    : `${vaults.length} vaults found. Select one to unlock.`
+
   for (const v of vaults) {
     const item = document.createElement('button')
     item.className = 'vault-picker-item'
@@ -266,13 +291,13 @@ function showVaultPickerPanel(vaults: VaultListEntry[]) {
     const meta = document.createElement('div')
     meta.className = 'vault-picker-meta'
     const seq = v.header.sequenceNumber ?? 0
-    meta.textContent = `Revision ${seq} · owner ${v.header.ownerId.slice(0, 8)}`
+    meta.textContent = `Rev ${seq} · ${v.header.ownerId.slice(0, 12)}`
 
     item.appendChild(label)
     item.appendChild(meta)
     item.onclick = async () => {
       await send<BackgroundToPopup>({ type: 'SELECT_VAULT', source: v.source })
-      showUnlockPanel()
+      showUnlockPanel(v.source)
     }
     vaultPickerList.appendChild(item)
   }
@@ -310,7 +335,8 @@ saveRelayBtn.addEventListener('click', saveRelayUrl)
 syncBtn.addEventListener('click', syncNow)
 
 toggleCreateBtn.addEventListener('click', showCreatePanel)
-toggleUnlockBtn.addEventListener('click', showUnlockPanel)
+toggleUnlockBtn.addEventListener('click', () => showUnlockPanel())
+backToPickerBtn.addEventListener('click', () => showVaultPickerPanel(_discoveredVaults))
 
 createForm.addEventListener('submit', async e => {
   e.preventDefault()
