@@ -152,7 +152,7 @@ async function revokeApproval(id: string) {
 
 async function lockVault() {
   await send<BackgroundToPopup>({ type: 'LOCK_VAULT' })
-  showLocked()
+  await init()
 }
 
 async function saveRelayUrl() {
