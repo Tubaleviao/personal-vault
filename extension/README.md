@@ -62,6 +62,15 @@ Supported types: `schema:givenName`, `schema:familyName`, `schema:name`, `schema
 - **Always allow**: a `SiteApproval` record is stored in `chrome.storage.local` and a pull-mode Grant is recorded in the vault audit log. Future page loads on the same origin fill automatically.
 - **Revocation**: revoking via the popup deletes the SiteApproval and calls `Vault.revokeGrant()` to record the revocation in the tamper-evident audit chain.
 
+## Credential capture (password manager)
+
+The extension also functions as a password manager:
+
+- **Detection**: login forms (username + password fields) are detected on page load. If saved credentials exist for the origin, a fill prompt is shown; the user picks which account to fill.
+- **Capture**: on form submit, the extension intercepts the credentials and shows a save/update banner. Confirming stores them as an encrypted `credential` claim in the vault.
+- **Update**: if a credential for the same username already exists, the banner offers to update rather than create a duplicate.
+- **Security**: password values are stored only inside the encrypted vault blob; they never appear in `chrome.storage`, extension logs, or the SiteApproval record.
+
 ## Security notes
 
 - The vault blob is stored in `chrome.storage.local` (encrypted). The master key and unlocked state live only in the background service worker's memory.
