@@ -100,7 +100,7 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
   return (
     <div>
       <h1 style={styles.heading}>Import from another vault</h1>
-      <p style={styles.subtitle}>Enter the passphrase of the vault you want to merge into this one. Claims that already exist are skipped. The source vault file is deleted after a successful merge.</p>
+      <p style={styles.subtitle}>Enter the passphrase of the vault you want to import. Claims that already exist are skipped.</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
         {others.map(file => {
           const state = mergeStates[file.name]
@@ -129,6 +129,11 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
                   {state.busy ? 'Merging…' : 'Merge'}
                 </button>
               </form>
+              {!state.result && (
+                <div style={styles.warning}>
+                  The source vault file will be permanently deleted after a successful import.
+                </div>
+              )}
               {state.result && (
                 <div style={{ fontSize: 12, color: state.result.ok ? '#22c55e' : '#f87171' }}>
                   {state.result.msg}
@@ -169,6 +174,11 @@ const styles = {
     outline: 'none',
     padding: '8px 10px',
     minWidth: 0,
+  } as React.CSSProperties,
+  warning: {
+    fontSize: 12,
+    color: '#fbbf24',
+    lineHeight: 1.5,
   } as React.CSSProperties,
   btn: {
     background: '#3b82f6',

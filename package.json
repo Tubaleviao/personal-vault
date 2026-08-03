@@ -22,7 +22,7 @@
     "diff":                 "quoin diff        -c ./newel.config.ts",
     "check-drift":          "quoin check-drift -c ./newel.config.ts",
     "native-host:build":    "cd native-host && cargo build --release",
-    "native-host:install":  "npm run native-host:build && ./native-host/install.sh ${EXTENSION_ID:+--extension-id $EXTENSION_ID}",
+    "native-host:install":  "npm run native-host:build && { . ./.env.local 2>/dev/null; ./native-host/install.sh ${EXTENSION_ID:+--extension-id $EXTENSION_ID}; }",
     "desktop:dev":          "cd desktop && npm run tauri dev",
     "desktop:build":        "cd desktop && npm run tauri build"
   },
