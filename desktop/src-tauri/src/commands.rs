@@ -136,8 +136,14 @@ pub fn install_native_host(app: tauri::AppHandle) -> Result<(), String> {
     let bundled_binary = resource_dir.join("personal-vault-native-host");
     let bundled_manifest = resource_dir.join("com.personal_vault.json");
 
+    // In debug builds the resource binary is a stale Cargo-staged copy and
+    // native-host/install.sh is the authoritative installer, so skip the
+    // overwrite entirely. Only production builds should auto-install.
+    if cfg!(debug_assertions) {
+        return Ok(());
+    }
+
     if !bundled_binary.exists() {
-        // Resources not bundled yet (e.g. dev mode before build-native-host.sh was run).
         return Ok(());
     }
 

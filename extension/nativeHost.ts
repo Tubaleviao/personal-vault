@@ -84,9 +84,9 @@ export async function nativeReadVault(name?: string): Promise<PersistedVault | n
  * Write the sealed vault blob to the desktop app's file storage.
  * Throws if the host returned an error.
  */
-export async function nativeWriteVault(vault: PersistedVault): Promise<void> {
+export async function nativeWriteVault(vault: PersistedVault, name?: string): Promise<void> {
   const blob = JSON.stringify(vault)
-  const res = await sendNative({ type: 'WRITE_VAULT', blob })
+  const res = await sendNative({ type: 'WRITE_VAULT', blob, name })
   if (!res.ok) throw new Error(res.error)
 }
 

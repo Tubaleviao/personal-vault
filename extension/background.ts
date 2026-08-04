@@ -698,6 +698,49 @@ async function handleMessage(
     return
   }
 
+  if (message.type === 'EXPORT_TO_DESKTOP') {
+    if (!session) {
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Vault is locked' })
+      return
+    }
+    if (_selectedVaultSource !== 'local') {
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Vault is already on the desktop' })
+      return
+    }
+    if (!(await useNativeHost())) {
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Desktop app not connected' })
+      return
+    }
+
+    try {
+      const blob = await session.vault.seal()
+
+      // Probe whether vault.json is free on disk.
+      const existing = await nativeReadVault()
+      let targetName: string | undefined
+
+      if (existing) {
+        // vault.json is taken — write to a named file so the user can import it from the desktop.
+        const ownerId = session.vault.owner.id.replace(/[^a-z0-9]/gi, '').slice(0, 12).toLowerCase()
+        targetName = `vault-${ownerId}.json`
+      }
+
+      await nativeWriteVault(blob, targetName)
+
+      if (!targetName) {
+        // vault.json was free — switch the extension to use native going forward.
+        await chrome.storage.local.remove('vault')
+        _selectedVaultSource = 'native'
+        _selectedNativeVaultName = null
+      }
+
+      sendResponse({ type: 'EXPORT_RESULT', ok: true, name: targetName })
+    } catch (err) {
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: String(err) })
+    }
+    return
+  }
+
   if (message.type === 'GET_NATIVE_HOST_STATUS') {
     const available = await useNativeHost()
     sendResponse({ type: 'NATIVE_HOST_STATUS', available })

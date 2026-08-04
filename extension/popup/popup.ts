@@ -49,6 +49,11 @@ const pickerCreateBtn = document.getElementById('picker-create-btn')!
 const vaultSourceBadge = document.getElementById('vault-source-badge')!
 const backToPickerBtn = document.getElementById('back-to-picker')!
 
+// Export UI
+const exportSection = document.getElementById('export-section')!
+const exportBtn = document.getElementById('export-btn')!
+const exportStatus = document.getElementById('export-status')!
+
 // Merge UI
 const mainPanel = document.getElementById('main-panel')!
 const mergePanel = document.getElementById('merge-panel')!
@@ -124,13 +129,15 @@ function renderSyncStatus(relayUrl: string, lastSyncedAt: string | null) {
     : 'Never synced.'
 }
 
-function showUnlocked(ownerDid: string, approvals: SiteApproval[]) {
+function showUnlocked(ownerDid: string, approvals: SiteApproval[], showExport = false) {
   statusDot.classList.add('unlocked')
   didShort.textContent = ownerDid !== 'unknown' ? ownerDid.slice(-8) : ''
   lockedView.style.display = 'none'
   unlockedView.style.display = 'block'
   mainPanel.style.display = 'block'
   mergePanel.style.display = 'none'
+  exportSection.style.display = showExport ? 'block' : 'none'
+  exportStatus.textContent = ''
   renderApprovals(approvals)
 }
 
@@ -323,19 +330,22 @@ async function transitionToUnlocked(ownerDid: string, activeSource: 'native' | '
 
   // Fetch secondary data with individual error handling so a suspended SW on
   // any one of these doesn't abort the transition.
-  const [approvalsRes, relayRes, vaultListRes] = await Promise.all([
+  const [approvalsRes, relayRes, vaultListRes, nativeStatusRes] = await Promise.all([
     send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }).catch(() => null) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
     send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }).catch(() => null) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
     send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }).catch(() => null) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
+    send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }).catch(() => null) as Promise<{ type: 'NATIVE_HOST_STATUS'; available: boolean } | null>,
   ])
 
-  // Backfill approvals if we got them
   if (approvalsRes?.type === 'APPROVALS_LIST') renderApprovals(approvalsRes.approvals)
   if (relayRes?.type === 'RELAY_CONFIG') renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 
   const vaults = (vaultListRes?.type === 'VAULT_LIST' ? vaultListRes.vaults : null) ?? []
   const others = vaults.filter(v => !(v.source === activeSource && (!v.name || v.name === _selectedNativeVaultName)))
   renderMergeOffer(others)
+
+  const showExport = activeSource === 'local' && nativeStatusRes?.available === true
+  exportSection.style.display = showExport ? 'block' : 'none'
 }
 
 let _selectedNativeVaultName: string | null = null
@@ -349,18 +359,19 @@ async function init() {
   const statusRes = await send<BackgroundToPopup>({ type: 'GET_VAULT_STATUS' }) as { type: 'VAULT_STATUS'; unlocked: boolean; ownerDid: string | null; activeSource: 'native' | 'local' | null } | null
 
   if (statusRes?.unlocked && statusRes.ownerDid) {
-    const [approvalsRes, relayRes, vaultListRes] = await Promise.all([
+    const [approvalsRes, relayRes, vaultListRes, nativeStatusRes] = await Promise.all([
       send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
       send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
       send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
+      send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }) as Promise<{ type: 'NATIVE_HOST_STATUS'; available: boolean } | null>,
     ])
 
-    showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [])
+    const activeSource = statusRes.activeSource
+    const showExport = activeSource === 'local' && nativeStatusRes?.available === true
+    showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [], showExport)
     if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 
-    // Show merge offer for all vaults that are not the currently active one
     const vaults = vaultListRes?.vaults ?? []
-    const activeSource = statusRes.activeSource
     const others = vaults.filter(v => !(v.source === activeSource && (!v.name || v.name === _selectedNativeVaultName)))
     renderMergeOffer(others)
     return
@@ -540,6 +551,30 @@ mnemonicDoneBtn.addEventListener('click', () => {
 })
 
 pickerCreateBtn.addEventListener('click', showCreatePanel)
+exportBtn.addEventListener('click', async () => {
+  exportBtn.setAttribute('disabled', 'true')
+  exportStatus.style.color = '#64748b'
+  exportStatus.textContent = 'Exporting…'
+
+  const res = await send<BackgroundToPopup>({ type: 'EXPORT_TO_DESKTOP' }) as { type: 'EXPORT_RESULT'; ok: boolean; name?: string; error?: string } | null
+
+  exportBtn.removeAttribute('disabled')
+
+  if (!res?.ok) {
+    exportStatus.style.color = '#f87171'
+    exportStatus.textContent = res?.error ?? 'Export failed'
+    return
+  }
+
+  exportStatus.style.color = '#22c55e'
+  if (res.name) {
+    exportStatus.textContent = `Saved as "${res.name}" — use Import in the desktop app to merge it`
+  } else {
+    exportStatus.textContent = 'Vault saved to desktop — now the primary storage'
+    exportSection.style.display = 'none'
+  }
+})
+
 importBtn.addEventListener('click', showMergePanel)
 mergeBackBtn.addEventListener('click', () => {
   mergePanel.style.display = 'none'

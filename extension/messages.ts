@@ -302,6 +302,20 @@ export interface MsgDeleteResult {
   error?: string
 }
 
+/** Popup asks background to export the browser-storage vault to a desktop file. */
+export interface MsgExportToDesktop {
+  type: 'EXPORT_TO_DESKTOP'
+}
+
+/** Background responds to EXPORT_TO_DESKTOP. */
+export interface MsgExportResult {
+  type: 'EXPORT_RESULT'
+  ok: boolean
+  /** Set when the vault was written to a named file (not vault.json) because vault.json was already taken. */
+  name?: string
+  error?: string
+}
+
 // ── Popup → Background: native host status ────────────────────────────────────
 
 /** Popup asks whether the native desktop host is reachable. */
@@ -328,6 +342,8 @@ export interface NativeMsgReadVault {
 export interface NativeMsgWriteVault {
   type: 'WRITE_VAULT'
   blob: string
+  /** Optional target filename within the vault directory. Defaults to vault.json. */
+  name?: string
 }
 
 /** Check whether a vault file exists on disk. */
@@ -399,6 +415,7 @@ export type PopupToBackground =
   | MsgSelectVault
   | MsgMergeVault
   | MsgDeleteVault
+  | MsgExportToDesktop
 
 export type BackgroundToPopup =
   | MsgApprovalsListResult
@@ -411,3 +428,4 @@ export type BackgroundToPopup =
   | MsgVaultList
   | MsgMergeResult
   | MsgDeleteResult
+  | MsgExportResult

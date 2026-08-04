@@ -27,7 +27,7 @@ use serde_json::{json, Value};
 #[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
 enum Request {
     ReadVault { name: Option<String> },
-    WriteVault { blob: String },
+    WriteVault { blob: String, name: Option<String> },
     VaultExists,
     ListVaults,
     DeleteVault { name: String },
@@ -123,24 +123,30 @@ fn handle(req: Request) -> Value {
                 }
             }
         }
-        Request::WriteVault { blob } => match vault_path() {
-            Err(e) => json!({ "ok": false, "error": e }),
-            Ok(path) => {
-                let result = path
-                    .parent()
-                    .ok_or_else(|| "No parent directory".to_string())
-                    .and_then(|dir| {
-                        fs::create_dir_all(dir).map_err(|e| format!("mkdir: {e}"))
-                    })
-                    .and_then(|_| {
-                        fs::write(&path, &blob).map_err(|e| format!("Write error: {e}"))
-                    });
-                match result {
-                    Ok(_) => json!({ "ok": true }),
-                    Err(e) => json!({ "ok": false, "error": e }),
+        Request::WriteVault { blob, name } => {
+            let path_result = match name.as_deref() {
+                Some(n) => sanitize_name(n).map(|n| vault_dir().map(|d| d.join(n))).and_then(|r| r),
+                None => vault_path(),
+            };
+            match path_result {
+                Err(e) => json!({ "ok": false, "error": e }),
+                Ok(path) => {
+                    let result = path
+                        .parent()
+                        .ok_or_else(|| "No parent directory".to_string())
+                        .and_then(|dir| {
+                            fs::create_dir_all(dir).map_err(|e| format!("mkdir: {e}"))
+                        })
+                        .and_then(|_| {
+                            fs::write(&path, &blob).map_err(|e| format!("Write error: {e}"))
+                        });
+                    match result {
+                        Ok(_) => json!({ "ok": true }),
+                        Err(e) => json!({ "ok": false, "error": e }),
+                    }
                 }
             }
-        },
+        }
         Request::DeleteVault { name } => match sanitize_name(&name) {
             Err(e) => json!({ "ok": false, "error": e }),
             Ok(n) => match vault_dir() {
