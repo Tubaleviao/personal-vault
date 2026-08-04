@@ -131,7 +131,7 @@ async function saveVaultBlob(blob: PersistedVault): Promise<void> {
     return
   }
   if (await useNativeHost()) {
-    try { await nativeWriteVault(blob); return } catch {
+    try { await nativeWriteVault(blob, _selectedNativeVaultName ?? undefined); return } catch {
       _nativeHostAvailable = null
       _selectedVaultSource = 'local'
     }
