@@ -31,6 +31,11 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     host: '127.0.0.1',
+    fs: {
+      // Allow Vite to serve files from the vault library (../src) which is
+      // outside the desktop/ project root but referenced via the @vault alias.
+      allow: ['..'],
+    },
   },
   // Prevent Vite from obscuring Rust/Tauri error messages during dev
   clearScreen: false,

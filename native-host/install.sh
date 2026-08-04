@@ -63,7 +63,11 @@ if command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
   sudo install -m 755 "$BINARY_PATH" "$INSTALLED_BIN"
   echo "Installed to $INSTALLED_BIN (system-wide)"
 else
-  INSTALL_DIR="$HOME/.local/bin"
+  # Use ~/.local/share/personal-vault/ to match where the Tauri desktop app
+  # installs the binary (dirs_next::data_local_dir() + "personal-vault/").
+  # Both installers must agree on this path so they don't overwrite each other's
+  # manifest with a different path after every run.
+  INSTALL_DIR="$HOME/.local/share/personal-vault"
   mkdir -p "$INSTALL_DIR"
   INSTALLED_BIN="$INSTALL_DIR/$BINARY_NAME"
   install -m 755 "$BINARY_PATH" "$INSTALLED_BIN"

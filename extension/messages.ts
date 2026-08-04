@@ -153,6 +153,8 @@ export interface MsgCreateResult {
   ok: boolean
   mnemonic?: string
   error?: string
+  ownerDid?: string
+  activeSource?: 'native' | 'local'
 }
 
 // ── Background → Popup ────────────────────────────────────────────────────────
@@ -175,6 +177,8 @@ export interface MsgUnlockResult {
   type: 'UNLOCK_RESULT'
   ok: boolean
   error?: string
+  ownerDid?: string
+  activeSource?: 'native' | 'local'
 }
 
 // ── Credential messages: Content → Background ─────────────────────────────────
@@ -242,6 +246,8 @@ export interface MsgCredentialSavePrompt {
 export interface VaultListEntry {
   source: 'native' | 'local'
   header: VaultHeader
+  /** Filename within the vault directory — only set for native source entries. */
+  name?: string
 }
 
 /** Popup asks for all discovered vault sources (no decryption needed). */
@@ -253,6 +259,8 @@ export interface MsgGetVaultList {
 export interface MsgSelectVault {
   type: 'SELECT_VAULT'
   source: 'native' | 'local'
+  /** For native source: the specific vault filename to read. */
+  name?: string
 }
 
 /** Background returns the list of discovered vault sources. */
@@ -268,6 +276,8 @@ export interface MsgMergeVault {
   type: 'MERGE_VAULT'
   /** The storage source that holds the other vault. */
   source: 'native' | 'local'
+  /** For native source: the specific vault filename to read. */
+  name?: string
   passphrase: string
 }
 
@@ -276,6 +286,33 @@ export interface MsgMergeResult {
   type: 'MERGE_RESULT'
   ok: boolean
   added: number
+  error?: string
+}
+
+/** Popup asks background to delete a vault by source + name. */
+export interface MsgDeleteVault {
+  type: 'DELETE_VAULT'
+  source: 'native' | 'local'
+  name?: string
+}
+
+export interface MsgDeleteResult {
+  type: 'DELETE_RESULT'
+  ok: boolean
+  error?: string
+}
+
+/** Popup asks background to export the browser-storage vault to a desktop file. */
+export interface MsgExportToDesktop {
+  type: 'EXPORT_TO_DESKTOP'
+}
+
+/** Background responds to EXPORT_TO_DESKTOP. */
+export interface MsgExportResult {
+  type: 'EXPORT_RESULT'
+  ok: boolean
+  /** Set when the vault was written to a named file (not vault.json) because vault.json was already taken. */
+  name?: string
   error?: string
 }
 
@@ -298,12 +335,15 @@ export interface MsgNativeHostStatus {
 /** Read the vault blob from the desktop app's file storage. */
 export interface NativeMsgReadVault {
   type: 'READ_VAULT'
+  name?: string
 }
 
 /** Write the sealed vault blob to the desktop app's file storage. */
 export interface NativeMsgWriteVault {
   type: 'WRITE_VAULT'
   blob: string
+  /** Optional target filename within the vault directory. Defaults to vault.json. */
+  name?: string
 }
 
 /** Check whether a vault file exists on disk. */
@@ -311,11 +351,23 @@ export interface NativeMsgVaultExists {
   type: 'VAULT_EXISTS'
 }
 
+/** List all vault files in the desktop vault directory. */
+export interface NativeMsgListVaults {
+  type: 'LIST_VAULTS'
+}
+
+/** Delete a vault file from the desktop vault directory. */
+export interface NativeMsgDeleteVault {
+  type: 'DELETE_VAULT'
+  name: string
+}
+
 /** Response from the native host for READ_VAULT / VAULT_EXISTS. */
 export interface NativeResponseOk {
   ok: true
-  blob?: string   // present on READ_VAULT response
+  blob?: string    // present on READ_VAULT response
   exists?: boolean // present on VAULT_EXISTS response
+  vaults?: Array<{ name: string; content: string }> // present on LIST_VAULTS response
 }
 
 export interface NativeResponseErr {
@@ -323,7 +375,7 @@ export interface NativeResponseErr {
   error: string
 }
 
-export type NativeRequest = NativeMsgReadVault | NativeMsgWriteVault | NativeMsgVaultExists
+export type NativeRequest = NativeMsgReadVault | NativeMsgWriteVault | NativeMsgVaultExists | NativeMsgListVaults | NativeMsgDeleteVault
 export type NativeResponse = NativeResponseOk | NativeResponseErr
 
 // ── Union types ───────────────────────────────────────────────────────────────
@@ -362,6 +414,8 @@ export type PopupToBackground =
   | MsgGetVaultList
   | MsgSelectVault
   | MsgMergeVault
+  | MsgDeleteVault
+  | MsgExportToDesktop
 
 export type BackgroundToPopup =
   | MsgApprovalsListResult
@@ -373,3 +427,5 @@ export type BackgroundToPopup =
   | MsgNativeHostStatus
   | MsgVaultList
   | MsgMergeResult
+  | MsgDeleteResult
+  | MsgExportResult

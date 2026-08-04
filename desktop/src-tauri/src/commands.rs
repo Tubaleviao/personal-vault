@@ -74,6 +74,14 @@ pub fn vault_file_exists() -> Result<bool, String> {
     Ok(vault_path()?.exists())
 }
 
+/// Delete a specific vault file by name. Rejects path-traversal attempts.
+#[tauri::command]
+pub fn delete_vault_file(name: String) -> Result<(), String> {
+    sanitize_vault_filename(&name)?;
+    let path = vault_dir()?.join(&name);
+    fs::remove_file(&path).map_err(|e| format!("Failed to delete vault: {e}"))
+}
+
 /// List all *.json vault files in the vault directory.
 /// Returns an array of { name, content } objects; invalid JSON files are skipped.
 /// .tmp files are excluded.
@@ -128,8 +136,14 @@ pub fn install_native_host(app: tauri::AppHandle) -> Result<(), String> {
     let bundled_binary = resource_dir.join("personal-vault-native-host");
     let bundled_manifest = resource_dir.join("com.personal_vault.json");
 
+    // In debug builds the resource binary is a stale Cargo-staged copy and
+    // native-host/install.sh is the authoritative installer, so skip the
+    // overwrite entirely. Only production builds should auto-install.
+    if cfg!(debug_assertions) {
+        return Ok(());
+    }
+
     if !bundled_binary.exists() {
-        // Resources not bundled yet (e.g. dev mode before build-native-host.sh was run).
         return Ok(());
     }
 

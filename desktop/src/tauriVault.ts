@@ -16,6 +16,11 @@ export function setActiveVaultName(name: string): void {
   _activeVaultName = name
 }
 
+/** Return the filename currently being used for vault I/O. */
+export function getActiveVaultName(): string {
+  return _activeVaultName
+}
+
 export async function readVaultFile(): Promise<PersistedVault | null> {
   const raw = await invoke<string | null>('read_vault_file', { name: _activeVaultName })
   if (raw === null) return null
@@ -37,6 +42,11 @@ export async function vaultFileExists(): Promise<boolean> {
 export interface VaultFileEntry {
   name: string
   vault: PersistedVault
+}
+
+/** Delete a specific vault file by name. */
+export async function deleteVaultFile(name: string): Promise<void> {
+  await invoke<void>('delete_vault_file', { name })
 }
 
 /** List all *.json vault files in the vault directory. Invalid JSON files are skipped. */

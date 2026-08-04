@@ -15,12 +15,18 @@
     "dist"
   ],
   "scripts": {
-    "build":       "tsc",
-    "validate":    "quoin validate    -s ./src/fabric.ts",
-    "inspect":     "quoin inspect     -s ./src/fabric.ts",
-    "generate":    "quoin generate    -c ./newel.config.ts",
-    "diff":        "quoin diff        -c ./newel.config.ts",
-    "check-drift": "quoin check-drift -c ./newel.config.ts"
+    "build":                "tsc",
+    "validate":             "quoin validate    -s ./src/fabric.ts",
+    "inspect":              "quoin inspect     -s ./src/fabric.ts",
+    "generate":             "quoin generate    -c ./newel.config.ts",
+    "diff":                 "quoin diff        -c ./newel.config.ts",
+    "check-drift":          "quoin check-drift -c ./newel.config.ts",
+    "extension:build":      "node extension/build.mjs",
+    "extension:watch":      "node extension/build.mjs --watch",
+    "native-host:build":    "cd native-host && cargo build --release",
+    "native-host:install":  "npm run native-host:build && { . ./.env.local 2>/dev/null; ./native-host/install.sh ${EXTENSION_ID:+--extension-id $EXTENSION_ID}; }",
+    "desktop:dev":          "cd desktop && npm run tauri dev",
+    "desktop:build":        "cd desktop && npm run tauri build"
   },
   "keywords": [
     "personal-data",

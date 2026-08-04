@@ -40,7 +40,7 @@ import { syncVault } from '../src/relay'
 import type { RelayConfig } from '../src/relay'
 import { generateMnemonicBundle, restoreFromMnemonic, verifyMnemonicCommitment } from '../src/recovery'
 import { didFromSeed } from '../src/did'
-import { isNativeHostAvailable, nativeReadVault, nativeWriteVault } from './nativeHost'
+import { isNativeHostAvailable, nativeReadVault, nativeWriteVault, nativeListVaults, nativeDeleteVault } from './nativeHost'
 
 // ── Native host availability (cached per service-worker lifetime) ──────────────
 
@@ -55,6 +55,9 @@ let _nativeHostAvailable: boolean | null = null
  * Reset to null on lock so each session starts with a fresh discovery.
  */
 let _selectedVaultSource: 'native' | 'local' | null = null
+
+/** For native source: the specific vault filename selected by the picker. */
+let _selectedNativeVaultName: string | null = null
 
 async function useNativeHost(): Promise<boolean> {
   if (_nativeHostAvailable === null) {
@@ -90,8 +93,8 @@ async function loadVaultBlob(): Promise<PersistedVault | null> {
     const result = await chrome.storage.local.get('vault')
     return (result['vault'] as PersistedVault | undefined) ?? null
   }
-  if (await useNativeHost()) {
-    try { return await nativeReadVault() } catch { /* fall through to storage */ }
+  if (_selectedVaultSource === 'native' || await useNativeHost()) {
+    try { return await nativeReadVault(_selectedNativeVaultName ?? undefined) } catch { /* fall through to storage */ }
   }
   const result = await chrome.storage.local.get('vault')
   return (result['vault'] as PersistedVault | undefined) ?? null
@@ -106,9 +109,11 @@ async function discoverVaults(): Promise<VaultListEntry[]> {
 
   if (await useNativeHost()) {
     try {
-      const blob = await nativeReadVault()
-      if (blob?.header) vaults.push({ source: 'native', header: blob.header })
-    } catch { /* host reachable but no vault file */ }
+      const nativeVaults = await nativeListVaults()
+      for (const { name, vault } of nativeVaults) {
+        if (vault?.header) vaults.push({ source: 'native', header: vault.header, name })
+      }
+    } catch { /* host reachable but no vault files */ }
   }
 
   const local = await chrome.storage.local.get('vault')
@@ -126,7 +131,7 @@ async function saveVaultBlob(blob: PersistedVault): Promise<void> {
     return
   }
   if (await useNativeHost()) {
-    try { await nativeWriteVault(blob); return } catch {
+    try { await nativeWriteVault(blob, _selectedNativeVaultName ?? undefined); return } catch {
       _nativeHostAvailable = null
       _selectedVaultSource = 'local'
     }
@@ -240,7 +245,8 @@ async function handleMessage(
         ownerPrivateKey,
         ownerPublicKey,
       }
-      sendResponse({ type: 'UNLOCK_RESULT', ok: true })
+      const activeSource = _selectedVaultSource ?? (_nativeHostAvailable ? 'native' : 'local')
+      sendResponse({ type: 'UNLOCK_RESULT', ok: true, ownerDid: vault.owner.did, activeSource })
     } catch (err) {
       sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: String(err) })
     }
@@ -308,7 +314,7 @@ async function handleMessage(
         ownerPublicKey: bundle.keypair.publicKey,
       }
 
-      sendResponse({ type: 'CREATE_RESULT', ok: true, mnemonic: bundle.mnemonic })
+      sendResponse({ type: 'CREATE_RESULT', ok: true, mnemonic: bundle.mnemonic, ownerDid: didDoc.id, activeSource: targetSource })
     } catch (err) {
       sendResponse({ type: 'CREATE_RESULT', ok: false, error: String(err) })
     }
@@ -323,6 +329,7 @@ async function handleMessage(
       session = null
     }
     _selectedVaultSource = null
+    _selectedNativeVaultName = null
     sendResponse(null)
     return
   }
@@ -624,6 +631,7 @@ async function handleMessage(
     // Ignore mid-session source changes — changing backend while unlocked risks split-brain writes.
     if (!session) {
       _selectedVaultSource = message.source
+      _selectedNativeVaultName = message.name ?? null
     }
     sendResponse(null)
     return
@@ -641,7 +649,7 @@ async function handleMessage(
         const result = await chrome.storage.local.get('vault')
         otherBlob = (result['vault'] as PersistedVault | undefined) ?? null
       } else {
-        otherBlob = await nativeReadVault()
+        otherBlob = await nativeReadVault(message.name)
       }
     } catch (err) {
       sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: `Could not read vault: ${err}` })
@@ -671,6 +679,64 @@ async function handleMessage(
       sendResponse({ type: 'MERGE_RESULT', ok: true, added })
     } catch (err) {
       sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: String(err) })
+    }
+    return
+  }
+
+  if (message.type === 'DELETE_VAULT') {
+    try {
+      if (message.source === 'local') {
+        await chrome.storage.local.remove('vault')
+      } else {
+        if (!message.name) throw new Error('No vault name provided')
+        await nativeDeleteVault(message.name)
+      }
+      sendResponse({ type: 'DELETE_RESULT', ok: true })
+    } catch (err) {
+      sendResponse({ type: 'DELETE_RESULT', ok: false, error: String(err) })
+    }
+    return
+  }
+
+  if (message.type === 'EXPORT_TO_DESKTOP') {
+    if (!session) {
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Vault is locked' })
+      return
+    }
+    if (_selectedVaultSource !== 'local') {
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Vault is already on the desktop' })
+      return
+    }
+    if (!(await useNativeHost())) {
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Desktop app not connected' })
+      return
+    }
+
+    try {
+      const blob = await session.vault.seal()
+
+      // Probe whether vault.json is free on disk.
+      const existing = await nativeReadVault()
+      let targetName: string | undefined
+
+      if (existing) {
+        // vault.json is taken — write to a named file so the user can import it from the desktop.
+        const ownerId = session.vault.owner.id.replace(/[^a-z0-9]/gi, '').slice(0, 12).toLowerCase()
+        targetName = `vault-${ownerId}.json`
+      }
+
+      await nativeWriteVault(blob, targetName)
+
+      if (!targetName) {
+        // vault.json was free — switch the extension to use native going forward.
+        await chrome.storage.local.remove('vault')
+        _selectedVaultSource = 'native'
+        _selectedNativeVaultName = null
+      }
+
+      sendResponse({ type: 'EXPORT_RESULT', ok: true, name: targetName })
+    } catch (err) {
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: String(err) })
     }
     return
   }

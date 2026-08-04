@@ -104,24 +104,30 @@
 
   <!-- Unlock / Create form (shown when vault is locked) -->
   <section id="locked-view">
-    <!-- Vault picker (shown when multiple vault sources are found) -->
+    <!-- Vault picker (shown when vaults are found) -->
     <div id="vault-picker-view">
-      <h2>Choose a vault</h2>
-      <p style="color:#64748b;font-size:11px;margin-bottom:8px">Multiple vaults found. Select one to unlock.</p>
+      <h2>Your vaults</h2>
+      <p id="vault-picker-subtitle" style="color:#64748b;font-size:11px;margin-bottom:8px">Select a vault to unlock.</p>
       <div id="vault-picker-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
       <button id="picker-create-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:block">Create a new vault instead</button>
     </div>
 
     <!-- Unlock form -->
     <div id="unlock-view">
-      <h2>Unlock Vault</h2>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <h2 style="margin-bottom:0">Unlock Vault</h2>
+        <span id="vault-source-badge" style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:4px;background:#1e293b;color:#7dd3fc;white-space:nowrap"></span>
+      </div>
       <form id="unlock-form" autocomplete="off">
         <input type="password" id="passphrase" placeholder="Passphrase" autofocus>
         <input type="password" id="mnemonic-input" placeholder="Recovery phrase (optional — needed for sync)">
         <div id="error-msg"></div>
         <button type="submit" class="btn-primary">Unlock</button>
       </form>
-      <button id="toggle-create">No vault yet? Create one</button>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        <button id="back-to-picker" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:none">← Back</button>
+        <button id="toggle-create" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">No vault yet? Create one</button>
+      </div>
     </div>
 
     <!-- Create vault form -->
@@ -147,34 +153,40 @@
     </div>
   </section>
 
-  <!-- Unlocked view -->
+  <!-- Unlocked view — main panel -->
   <section id="unlocked-view" style="display:none">
-    <h2>Approved Sites</h2>
-    <ul id="approval-list" class="approval-list"></ul>
-    <div id="no-approvals">No sites approved yet.</div>
+    <!-- Main screen -->
+    <div id="main-panel">
+      <h2>Approved Sites</h2>
+      <ul id="approval-list" class="approval-list"></ul>
+      <div id="no-approvals">No sites approved yet.</div>
 
-    <h2 style="margin-top:14px">Sync</h2>
-    <div id="sync-section" style="display:flex;flex-direction:column;gap:6px">
-      <input type="url" id="relay-url" placeholder="https://your-relay.workers.dev" style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:7px 10px;width:100%;outline:none">
-      <div style="display:flex;gap:6px">
-        <button id="save-relay-btn" class="btn-primary" style="flex:1">Save URL</button>
-        <button id="sync-btn" class="btn-primary" style="flex:1">Sync now</button>
+      <h2 style="margin-top:14px">Sync</h2>
+      <div id="sync-section" style="display:flex;flex-direction:column;gap:6px">
+        <input type="url" id="relay-url" placeholder="https://your-relay.workers.dev" style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:7px 10px;width:100%;outline:none">
+        <div style="display:flex;gap:6px">
+          <button id="save-relay-btn" class="btn-primary" style="flex:1">Save URL</button>
+          <button id="sync-btn" class="btn-primary" style="flex:1">Sync now</button>
+        </div>
+        <div id="sync-status" style="font-size:11px;color:#64748b;min-height:16px"></div>
       </div>
-      <div id="sync-status" style="font-size:11px;color:#64748b;min-height:16px"></div>
+
+      <div id="export-section" style="display:none;margin-top:14px">
+        <button id="export-btn" style="width:100%;background:transparent;border:1px solid #3b82f6;border-radius:6px;color:#7dd3fc;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer">Save vault to desktop</button>
+        <div id="export-status" style="font-size:11px;min-height:14px;margin-top:4px"></div>
+      </div>
+      <button id="import-btn" style="margin-top:8px;width:100%;background:transparent;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer">Import from another vault</button>
+      <button id="lock-btn" class="btn-danger" style="margin-top:8px;width:100%">Lock vault</button>
     </div>
 
-    <!-- Merge offer (shown when a secondary vault exists after unlock) -->
-    <div id="merge-offer" style="display:none;margin-top:14px">
-      <h2>Import from other vault</h2>
-      <p style="color:#94a3b8;font-size:11px;margin:4px 0 8px">A vault was also found in <strong id="merge-source-label">browser storage</strong>. Enter its passphrase to merge its claims into this vault.</p>
-      <form id="merge-form" autocomplete="off" style="display:flex;flex-direction:column;gap:6px">
-        <input type="password" id="merge-passphrase" placeholder="Other vault's passphrase" style="background:#1e293b;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:7px 10px;width:100%;outline:none">
-        <button type="submit" class="btn-primary">Merge claims</button>
-      </form>
-      <div id="merge-status" style="font-size:11px;color:#64748b;margin-top:4px;min-height:16px"></div>
+    <!-- Merge screen (replaces main panel) -->
+    <div id="merge-panel" style="display:none">
+      <button id="merge-back-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;margin-bottom:10px;display:block">← Back</button>
+      <h2>Import from another vault</h2>
+      <p style="color:#64748b;font-size:11px;margin:4px 0 10px">Enter the passphrase of the vault to import. It will be deleted after a successful merge.</p>
+      <div id="merge-vault-list" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div id="merge-empty" style="display:none;color:#64748b;font-size:12px;text-align:center;padding:16px 0">No other vaults found.</div>
     </div>
-
-    <button id="lock-btn" class="btn-danger" style="margin-top:14px;width:100%">Lock vault</button>
   </section>
 
   <script type="module" src="popup.js"></script>

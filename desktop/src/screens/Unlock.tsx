@@ -9,11 +9,34 @@ import {
 } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
 
+/**
+ * Generate a unique vault filename.
+ * Uses the display name if provided (sanitized), otherwise a unix timestamp.
+ * Appends a timestamp suffix if the base name is already taken.
+ */
+function uniqueVaultFilename(displayName: string, existing: string[]): string {
+  const taken = new Set(existing)
+  const ts = Date.now()
+
+  const base = displayName.trim()
+    ? displayName.trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+    : String(ts)
+
+  const candidate = `${base}.json`
+  if (!taken.has(candidate)) return candidate
+
+  // Name already taken — append timestamp suffix to make it unique.
+  return `${base}-${ts}.json`
+}
+
 interface Props {
   onUnlocked: (vault: Vault, persisted: PersistedVault) => void
 }
 
-type Mode = 'detect' | 'pick' | 'create' | 'open' | 'merge'
+type Mode = 'detect' | 'pick' | 'create' | 'open'
 
 export default function Unlock({ onUnlocked }: Props) {
   const [mode, setMode] = useState<Mode>('detect')
@@ -21,23 +44,12 @@ export default function Unlock({ onUnlocked }: Props) {
   const [mnemonic, setMnemonic] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [vaultFiles, setVaultFiles] = useState<VaultFileEntry[]>([])
-  const [otherFiles, setOtherFiles] = useState<VaultFileEntry[]>([])
-
   // After vault creation, hold the mnemonic + persisted blob until the user
   // acknowledges the phrase and clicks Continue.
   const [pendingCreate, setPendingCreate] = useState<{
     mnemonic: string
     persisted: PersistedVault
   } | null>(null)
-
-  // After unlock, the vault is held here while we offer to merge secondary vaults.
-  const [pendingUnlock, setPendingUnlock] = useState<{
-    vault: Vault
-    persisted: PersistedVault
-  } | null>(null)
-
-  const [mergePassphrase, setMergePassphrase] = useState('')
-  const [mergeStatus, setMergeStatus] = useState<{ ok: boolean; msg: string } | null>(null)
 
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -52,10 +64,9 @@ export default function Unlock({ onUnlocked }: Props) {
           // showing Create, so a corrupt vault.json doesn't get silently overwritten.
           const rawExists = await vaultFileExists()
           setMode(rawExists ? 'open' : 'create')
-        } else if (files.length === 1) {
-          setActiveVaultName(files[0].name)
-          setMode('open')
         } else {
+          // Always show the picker so the user can see which vault they're unlocking,
+          // even when only one is found.
           setVaultFiles(files)
           setMode('pick')
         }
@@ -67,9 +78,8 @@ export default function Unlock({ onUnlocked }: Props) {
 
   // ── Vault picker ─────────────────────────────────────────────────────────────
 
-  const handlePickVault = useCallback((file: VaultFileEntry, all: VaultFileEntry[]) => {
+  const handlePickVault = useCallback((file: VaultFileEntry) => {
     setActiveVaultName(file.name)
-    setOtherFiles(all.filter(f => f.name !== file.name))
     setMode('open')
   }, [])
 
@@ -90,6 +100,8 @@ export default function Unlock({ onUnlocked }: Props) {
         mnemonicCommitment: bundle.mnemonicCommitment,
       })
       const persisted = await vault.seal()
+      const newName = uniqueVaultFilename(displayName, vaultFiles.map(f => f.name))
+      setActiveVaultName(newName)
       await writeVaultFile(persisted)
       setPendingCreate({ mnemonic: bundle.mnemonic, persisted })
     } catch (err) {
@@ -129,64 +141,13 @@ export default function Unlock({ onUnlocked }: Props) {
         if (!bundle) throw new Error('Invalid recovery phrase.')
         ;(vault as unknown as { _recoveryKeypair: unknown })._recoveryKeypair = bundle.keypair
       }
-
-      if (otherFiles.length > 0) {
-        // Offer merge before transitioning — user can skip by clicking "Continue"
-        setPendingUnlock({ vault, persisted })
-        setMode('merge')
-      } else {
-        onUnlocked(vault, persisted)
-      }
+      onUnlocked(vault, persisted)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
     }
-  }, [passphrase, mnemonic, busy, onUnlocked, otherFiles])
-
-  // ── Merge ─────────────────────────────────────────────────────────────────────
-
-  const handleMerge = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!pendingUnlock || busy) return
-    setBusy(true)
-    setMergeStatus(null)
-    try {
-      let added = 0
-      for (const file of otherFiles) {
-        try {
-          const other = await VaultClass.open(file.vault, mergePassphrase)
-          const claims = other.listClaims()
-          other.lock().catch(() => { /* best effort */ })
-          for (const claim of claims) {
-            const before = pendingUnlock.vault.listClaims().length
-            pendingUnlock.vault.importClaim(claim)
-            if (pendingUnlock.vault.listClaims().length > before) added++
-          }
-        } catch {
-          // wrong passphrase for this file — skip
-        }
-      }
-      const persisted = await pendingUnlock.vault.seal()
-      await writeVaultFile(persisted)
-      setPendingUnlock(prev => prev ? { vault: prev.vault, persisted } : prev)
-      setMergeStatus({ ok: true, msg: added > 0 ? `Merged ${added} claim${added === 1 ? '' : 's'}` : 'No new claims to merge' })
-    } catch (err) {
-      setMergeStatus({ ok: false, msg: err instanceof Error ? err.message : String(err) })
-    } finally {
-      setBusy(false)
-    }
-  }, [pendingUnlock, mergePassphrase, busy, otherFiles])
-
-  const handleSkipMerge = useCallback(() => {
-    if (!pendingUnlock) return
-    onUnlocked(pendingUnlock.vault, pendingUnlock.persisted)
-  }, [pendingUnlock, onUnlocked])
-
-  const handleContinueAfterMerge = useCallback(() => {
-    if (!pendingUnlock) return
-    onUnlocked(pendingUnlock.vault, pendingUnlock.persisted)
-  }, [pendingUnlock, onUnlocked])
+  }, [passphrase, mnemonic, busy, onUnlocked])
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -199,13 +160,15 @@ export default function Unlock({ onUnlocked }: Props) {
       <div style={styles.center}>
         <div style={styles.card}>
           <h1 style={styles.title}>Personal Vault</h1>
-          <p style={styles.subtitle}>Multiple vault files found — choose one to unlock</p>
+          <p style={styles.subtitle}>
+            {vaultFiles.length === 1 ? 'One vault found — click it to unlock' : `${vaultFiles.length} vaults found — choose one to unlock`}
+          </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {vaultFiles.map(file => (
               <button
                 key={file.name}
                 style={styles.pickerItem}
-                onClick={() => handlePickVault(file, vaultFiles)}
+                onClick={() => handlePickVault(file)}
               >
                 <div style={styles.pickerName}>{file.name}</div>
                 <div style={styles.pickerMeta}>
@@ -218,49 +181,6 @@ export default function Unlock({ onUnlocked }: Props) {
           <button style={styles.switchLink} onClick={() => setMode('create')}>
             Create a new vault instead
           </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (mode === 'merge') {
-    return (
-      <div style={styles.center}>
-        <div style={styles.card}>
-          <h1 style={styles.title}>Personal Vault</h1>
-          <p style={styles.subtitle}>Import from another vault</p>
-          <p style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>
-            {otherFiles.length === 1 ? `"${otherFiles[0].name}"` : `${otherFiles.length} other vault files`} found in the vault directory.
-            Enter {otherFiles.length === 1 ? 'its' : 'their'} passphrase to merge claims into the vault you just opened.
-          </p>
-          {mergeStatus ? (
-            <>
-              <div style={{ color: mergeStatus.ok ? '#22c55e' : '#f87171', fontSize: 13, textAlign: 'center' }}>
-                {mergeStatus.msg}
-              </div>
-              <button style={styles.btn} onClick={handleContinueAfterMerge} disabled={busy}>
-                Continue
-              </button>
-            </>
-          ) : (
-            <form onSubmit={e => { void handleMerge(e) }} style={styles.form}>
-              <input
-                style={styles.input}
-                type="password"
-                placeholder="Other vault's passphrase"
-                value={mergePassphrase}
-                onChange={e => setMergePassphrase(e.target.value)}
-                autoFocus
-                autoComplete="off"
-              />
-              <button style={styles.btn} type="submit" disabled={busy}>
-                {busy ? 'Merging…' : 'Merge claims'}
-              </button>
-              <button style={styles.switchLink} type="button" onClick={handleSkipMerge} disabled={busy}>
-                Skip — continue without merging
-              </button>
-            </form>
-          )}
         </div>
       </div>
     )
@@ -346,9 +266,9 @@ export default function Unlock({ onUnlocked }: Props) {
           {mode === 'create' ? 'Already have a vault? Unlock' : 'New vault? Create one'}
         </button>
 
-        {mode === 'open' && vaultFiles.length > 1 && (
+        {mode === 'open' && vaultFiles.length > 0 && (
           <button style={styles.switchLink} onClick={() => setMode('pick')}>
-            Choose a different vault file
+            ← Back to vault list
           </button>
         )}
       </div>
