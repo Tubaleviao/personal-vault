@@ -26,9 +26,68 @@ All steps below are implemented. Modules are in `src/` and `extension/`.
 | 3.2.3 | Push sharing: signed encrypted bundle, verifier with badges | `sharing.ts` |
 | 3.2.4 | Browser extension: form-filler with per-site/per-field approval, popup, MV3 service worker | `extension/`, `src/form-filler.ts` |
 | 3.2.5 | Audit log: hash chain, tamper detection, display format | `audit.ts` |
-| 3.2.6 | Sync relay + second device: Cloudflare Worker + KV, Ed25519-authenticated push/pull | `relay/worker.ts`, `src/relay.ts` |
+| 3.2.6 | ~~Sync relay (Cloudflare Worker + KV)~~ — superseded by Phase 3.5.2 cloud storage sync | `relay/worker.ts`, `src/relay.ts` (to be removed) |
 | 3.2.7 | Grant consent layer: create, sign, validate, revoke | `consent.ts` |
 | 2.3 | DID identity layer: `did:key` generation, VC import stub, SD-JWT framing | `did.ts` |
+
+---
+
+## Phase 3.5.2 — Cloud Storage Sync (replaces relay) — Next
+
+The Cloudflare Worker relay is being removed. Sync will instead write the encrypted vault file directly to a user-controlled cloud storage folder (iCloud Drive, Dropbox, Google Drive, or a flash drive). The vault is already fully encrypted — the cloud provider sees only opaque bytes.
+
+### Why
+
+- The relay requires internet connectivity to do anything — cloud storage mounts the vault file locally, so the vault works fully offline. The OS queues writes and syncs opportunistically.
+- No server to deploy, no accounts to create, no URL to type into three different apps.
+- Flash drive support lets air-gapped or low-connectivity users sync without any cloud account.
+
+### What to build
+
+**`src/storage.ts`** — new module, replaces `src/relay.ts`:
+- `StorageConfig` type: `{ path: string; label?: string }` — just a file path the user configured
+- `readVaultFile(path)` — read the vault blob from disk; throws `VaultStorageError` with `code: 'NOT_FOUND' | 'DRIVE_MISSING' | 'PERMISSION_DENIED' | 'CORRUPT'` on failure
+- `writeVaultFile(path, blob)` — write the sealed blob atomically (write to `.tmp` then rename); same error codes
+- `detectDriveMissing(path)` — checks whether the parent mount point exists, to distinguish "file not found" from "drive not plugged in"
+- Error messages are human-readable and actionable: `"Flash drive not found. Please plug in your drive and try again."`
+
+**Desktop app (`desktop/`)**:
+- Replace the Sync screen's relay URL input with a file path picker (Tauri `open()` dialog filtered to `.json`/`.vault`)
+- Store the chosen path in Tauri's persistent app config (`tauri-plugin-store`)
+- On vault save: write to the configured path in addition to the local app data dir (the local copy is always the working copy; the storage path is the sync target)
+- On open: if a storage path is configured and the local copy is absent or older (by `sequenceNumber`), load from the storage path
+- Error banner when the drive is missing at sync time — non-blocking, vault still opens from local copy
+
+**Browser extension (`extension/`)**:
+- The extension delegates vault I/O to the desktop app via native messaging — when the desktop app is running, the vault file path is already handled there, so no extension changes are needed for the common case
+- Fallback (no desktop app): show a one-time prompt to import a vault file via the popup; the extension stores it in `chrome.storage.local` as today
+
+**Mobile apps (future — Phase 4+)**:
+- iOS: system Files picker (UIDocumentPickerViewController) — user picks the vault file from iCloud Drive, Dropbox, or Google Drive's document provider. Persist a security-scoped bookmark. On open, resolve the bookmark and read the file; on save, write back.
+- Android: Storage Access Framework — `ACTION_OPEN_DOCUMENT` with `PERSIST_URI` permission. Same bookmark pattern.
+- Both: detect when the bookmarked URI is unreachable (drive removed, cloud file deleted) and show a clear error with recovery options.
+
+### Error handling matrix
+
+| Situation | Error code | User-facing message |
+|---|---|---|
+| Storage path not yet configured | `NOT_CONFIGURED` | "Choose a sync location in Settings to keep your vault in sync across devices." |
+| File not found at path | `NOT_FOUND` | "Vault file not found at the configured path. Has the file been moved?" |
+| Mount point missing (drive unplugged) | `DRIVE_MISSING` | "External drive not found. Plug in your drive and try again." |
+| Read permission denied | `PERMISSION_DENIED` | "Cannot read vault file — check folder permissions." |
+| File is not a valid vault | `CORRUPT` | "The file at the sync path does not appear to be a valid vault." |
+| Cloud not synced yet (file older) | — | Show `sequenceNumber` comparison; offer "Use local copy" or "Use cloud copy" |
+
+### Build steps
+
+- [ ] Write `src/storage.ts` — `readVaultFile`, `writeVaultFile`, `detectDriveMissing`, `VaultStorageError`
+- [ ] Remove `src/relay.ts` and `relay/worker.ts` (keep `relay/` dir with a tombstone README explaining the decision)
+- [ ] Desktop: replace Sync screen with Storage screen — path picker, test-read button, error states
+- [ ] Desktop: write to storage path on every vault seal; read from it on startup when local copy absent/older
+- [ ] Extension: remove relay URL input from popup; add vault file import button for the no-desktop-app fallback
+- [ ] Update `CLAUDE.md` module map and invariants
+- [ ] Update `THREAT_MODEL.md` — remove relay threat surface, add cloud provider and flash drive threat entries
+- [ ] Update `README.md` — remove relay setup instructions, document cloud storage setup
 
 ---
 
@@ -109,6 +168,62 @@ Once the desktop app is running, the browser extension can delegate vault I/O to
 - [x] Sync panel — relay URL config + manual sync trigger (`screens/Sync.tsx`)
 - [ ] Package and test on Linux, macOS, Windows (requires Rust + `cargo tauri build`)
 - [x] Native messaging host: auto-installed by the desktop app on first launch; extension ID stabilised via RSA key in `manifest.json` — no manual steps for users
+
+---
+
+## Phase 3.5.3 — Diverged Vault Merge
+
+When a vault is used on two independent copies (e.g. a flash drive taken on a trip + a cloud copy that was also touched at home), the two histories diverge from a common ancestor and neither is strictly "newer". A simple `sequenceNumber` comparison (Phase 3.5.2) can detect the divergence, but cannot resolve it. This step adds the merge logic.
+
+### When it applies
+
+A merge is needed when, at sync time, **both** the local copy and the external copy (cloud / flash drive) have a `sequenceNumber` greater than the other side's last-known value — meaning both were modified independently since the copy was made. If only one side has advanced, a simple overwrite is correct and no merge UI is shown.
+
+### Merge algorithm
+
+**Claims** (identity attributes, passwords, etc.):
+- Build a union of all claim IDs from both vaults.
+- For each claim ID present in both: keep the copy with the **later `updatedAt` timestamp** (last-write-wins per claim).
+- For each claim ID present in only one side: include it unconditionally.
+
+**Grants and revocations:**
+- If a grant was revoked on either side, the revocation wins regardless of timestamp — the safer outcome.
+- New grants on either side are included.
+
+**Audit chains:**
+- The two vaults have diverged hash chains from the fork point onward — they cannot be concatenated, because each entry's `prevHash` references its own prior entry.
+- After merging claims and grants, append a single `merge` audit entry to the surviving chain. Its `prevHash` references the last entry of the chosen "base" chain (the local copy by default). It records the other chain's final hash as `mergedFromHash` so the full provenance is preserved.
+- The merged vault's `sequenceNumber` is `max(local.sequenceNumber, remote.sequenceNumber) + 1`.
+
+### Conflict policy
+
+| Situation | Resolution |
+|---|---|
+| Same claim modified on both sides | Last `updatedAt` wins; the overwritten version is noted in the merge audit entry |
+| Claim deleted on one side, modified on the other | Deletion wins (conservative — avoids resurrecting data the user intentionally removed) |
+| Grant active on one side, revoked on the other | Revocation wins |
+| Identical claim on both sides (same `updatedAt`) | Deduplicated — no conflict |
+
+### What to build
+
+**`src/storage.ts`**:
+- `detectDivergence(local: PersistedVault, remote: PersistedVault): boolean` — returns true when both sides have advanced past the common `sequenceNumber`
+- `mergeVaults(local: PersistedVault, remote: PersistedVault, passphrase: string): PersistedVault` — decrypts both, applies the algorithm above, returns a new sealed vault
+
+**Desktop app Storage screen**:
+- When divergence is detected at sync time, show a merge banner: _"Both copies were modified since your last sync. N claims will be merged."_
+- Summary: how many claims are identical, how many differ (and which side wins), how many are new on each side
+- One-click "Merge and save" — runs `mergeVaults`, writes the result to both the local copy and the external path
+- Escape hatch: "Keep local" / "Keep external" buttons for users who know which copy is authoritative
+
+### Build steps
+
+- [ ] `detectDivergence()` in `src/storage.ts`
+- [ ] `mergeVaults()` in `src/storage.ts` — claims union, revocation-wins for grants, `merge` audit entry
+- [ ] Desktop: merge banner and conflict summary in the Storage screen
+- [ ] Desktop: "Merge and save" action — write merged vault to both paths
+- [ ] Desktop: "Keep local" / "Keep external" escape hatches
+- [ ] Tests: diverged-vault fixture pairs covering identical, conflict, delete-vs-modify, and revocation cases
 
 ---
 
@@ -205,6 +320,6 @@ Publishing to the Web Store gives the extension a permanent, public extension ID
 
 ## Rough Budget
 
-- Domain + relay (Cloudflare Workers free tier): < $10/year
+- Domain: < $10/year (optional — no relay server needed)
 - Tauri desktop app distribution: free (no app store fees for self-distribution)
 - Later: security audit ($5k–15k, fund via grants)
