@@ -79,7 +79,15 @@ audit.ts      — Standalone hash-chain utilities: buildEntry(), verifyChain()
                 (detects both broken linkage and content tampering),
                 formatAuditLog() for the UI screen. The Vault class calls
                 _appendAudit() internally; this module exposes the primitives
-                for independent use (relay, testing).
+                for independent use (testing, external tools).
+
+storage.ts    — (planned, Phase 3.5.2) Cloud storage sync: readVaultFile(),
+                writeVaultFile() (atomic write via .tmp + rename),
+                detectDriveMissing(). VaultStorageError with typed codes:
+                NOT_CONFIGURED | NOT_FOUND | DRIVE_MISSING |
+                PERMISSION_DENIED | CORRUPT | DRIVE_FULL.
+                Replaces relay.ts. The sync folder can be any mounted path:
+                iCloud Drive, Dropbox, Google Drive, or a flash drive.
 
 consent.ts    — Application-layer grant logic: createGrant() (builds + signs),
                 validateGrant() (sig + status + expiry), createPushGrant()
@@ -182,7 +190,7 @@ src/form-filler.ts         — Vault-side library shared by the extension.
 | Phase 3, Step 3.2.5 | Audit log screen data: hash chain, tamper detection, display format | `audit.ts` |
 | Phase 2, Steps 2.4 / Phase 3, Step 3.2.7 | Grant consent layer: create, sign, validate, revoke | `consent.ts` |
 | Phase 3, Step 3.2.4 | Browser extension: form-filler with per-site/per-field approval, credential capture, popup, MV3 service worker | `extension/`, `src/form-filler.ts` |
-| Phase 3, Step 3.2.6 | Sync relay: Cloudflare Workers + KV, Ed25519-authenticated push/pull, multi-device sync | `relay/worker.ts`, `src/relay.ts` |
+| Phase 3, Step 3.2.6 | ~~Sync relay (Cloudflare Worker + KV)~~ — superseded by Phase 3.5.2 | `relay/worker.ts`, `src/relay.ts` (to be removed) |
 | Phase 3, Step 3.3 | Security hygiene: STRIDE threat model, CI audit, scrypt N upgrade to 2^16 | `THREAT_MODEL.md`, `.github/workflows/ci.yml` |
 | Phase 3.5 | Desktop app: Tauri v2 — unlock/claims/audit/sync screens, native messaging host auto-install | `desktop/` |
 
@@ -190,6 +198,7 @@ src/form-filler.ts         — Vault-side library shared by the extension.
 
 | Step | What |
 |---|---|
+| Phase 3.5.2 | Cloud storage sync — `src/storage.ts`, desktop Storage screen, extension fallback import, flash drive support with error handling |
 | Phase 3.5.1 | Vault discovery & multi-vault picker (extension + desktop) |
 | Phase 3.6 | Chrome Web Store publishing |
 | Phase 4 | Validation: dogfood, 10 real users, one real data consumer |

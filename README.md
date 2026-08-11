@@ -77,9 +77,10 @@ The key difference: password managers store and replay credentials on your behal
 - Native messaging host auto-installed on first launch — the browser extension delegates vault reads to the desktop app over Chrome's Native Messaging API
 
 **Cross-device sync**
-- Encrypted blob relay via Cloudflare Workers + KV — the relay stores only ciphertext, never plaintext
-- Ed25519-authenticated push/pull: requests are signed with the owner keypair; the relay rejects unauthenticated writes
-- Pull from any device with your passphrase and recovery phrase; the encrypted blob is merged client-side
+- Sync by pointing the app at a shared folder — iCloud Drive, Dropbox, Google Drive, or a flash drive
+- The vault file is already fully encrypted; the cloud provider sees only opaque bytes
+- Works fully offline: the OS keeps a local copy and queues uploads when connectivity returns
+- Flash drive support for air-gapped setups; clear error messages when the drive is not attached
 
 ---
 
@@ -252,13 +253,14 @@ Once loaded:
 | Consent & grant layer (create, validate, revoke) | ✅ Done |
 | Browser extension (auto-fill with per-site approval) | ✅ Done |
 | Browser extension — credential capture (password manager) | ✅ Done |
-| Cross-device sync relay (Cloudflare Workers + KV) | ✅ Done |
+| Cross-device sync via cloud storage / flash drive | 🔜 Next |
 | Desktop app (Tauri — Windows / macOS / Linux) | ✅ Done |
 | Full SD-JWT spec conformance (`issueSDJWT` / `verifySDJWT`) | ✅ Done |
 | VC proof verification in `importVC()` (Ed25519Signature2020) | ✅ Done |
 | scrypt N upgrade to 2^16 for new vaults | ✅ Done |
 | STRIDE threat model document | ✅ Done |
-| Vault discovery & multi-vault picker | 🔜 Next |
+| Cloud storage sync (replaces relay) | 🔜 Next |
+| Vault discovery & multi-vault picker | 🔜 Planned |
 | Chrome Web Store publishing | 🔜 Planned |
 | External cryptography review | 🔜 Planned |
 | Mobile apps (iOS, Android) | 🔜 Planned |
