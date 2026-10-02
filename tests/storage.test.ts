@@ -117,6 +117,22 @@ test('legacy header without scryptN is readable', async () => {
   assert.deepEqual(await readVaultFile(p), legacy)
 })
 
+test('legacy header without sequenceNumber is readable', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const p = join(dir, 'v.vault')
+  const legacy = { ...blob, header: { ...blob.header } } as any
+  delete legacy.header.sequenceNumber
+  await writeFile(p, JSON.stringify(legacy))
+  assert.deepEqual(await readVaultFile(p), legacy)
+})
+
+test('non-numeric sequenceNumber -> CORRUPT', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const p = join(dir, 'v.vault')
+  await writeFile(p, JSON.stringify({ ...blob, header: { ...blob.header, sequenceNumber: 'x' } }))
+  assert.equal(await code(readVaultFile(p)), 'CORRUPT')
+})
+
 test('out-of-range scryptN -> CORRUPT', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'vs-'))
   const p = join(dir, 'v.vault')

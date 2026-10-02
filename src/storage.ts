@@ -82,8 +82,9 @@ function isPersistedVault(v: unknown): v is PersistedVault {
     && typeof o.header.ownerId === 'string'
     && typeof o.header.salt === 'string'
     && typeof o.header.keyVerificationHash === 'string'
-    && typeof o.header.sequenceNumber === 'number'
-    && Number.isFinite(o.header.sequenceNumber)
+    // sequenceNumber is absent in legacy vaults; Vault.seal and relay treat it as 0.
+    && (o.header.sequenceNumber === undefined
+      || (typeof o.header.sequenceNumber === 'number' && Number.isFinite(o.header.sequenceNumber)))
     // scryptN is absent in legacy vaults; Vault.open falls back to SCRYPT_N_V1.
     && (o.header.scryptN === undefined
       || (Number.isInteger(o.header.scryptN) && o.header.scryptN >= SCRYPT_N_MIN && o.header.scryptN <= SCRYPT_N_MAX))
