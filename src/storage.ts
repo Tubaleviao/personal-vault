@@ -88,10 +88,11 @@ function isPersistedVault(v: unknown): v is PersistedVault {
     && typeof o.header.keyVerificationHash === 'string'
     // sequenceNumber is absent in legacy vaults; Vault.seal and relay treat it as 0.
     && (o.header.sequenceNumber === undefined
-      || (typeof o.header.sequenceNumber === 'number' && Number.isFinite(o.header.sequenceNumber)))
+      || (Number.isInteger(o.header.sequenceNumber) && o.header.sequenceNumber >= 0))
     // scryptN is absent in legacy vaults; Vault.open falls back to SCRYPT_N_V1.
     && (o.header.scryptN === undefined
-      || (Number.isInteger(o.header.scryptN) && o.header.scryptN >= SCRYPT_N_MIN && o.header.scryptN <= SCRYPT_N_MAX))
+      || (Number.isInteger(o.header.scryptN) && o.header.scryptN >= SCRYPT_N_MIN && o.header.scryptN <= SCRYPT_N_MAX
+        && (o.header.scryptN & (o.header.scryptN - 1)) === 0))
     && !!o.encrypted && typeof o.encrypted === 'object'
     && typeof o.encrypted.nonce === 'string'
     && typeof o.encrypted.ciphertext === 'string'
@@ -128,11 +129,13 @@ export async function writeVaultFile(path: string, blob: PersistedVault): Promis
     // never replace the link with a local file.
     let target: string | undefined
     try {
-      const orig = path
-      if ((await fs.lstat(orig)).isSymbolicLink()) {
-        target = nodePath.resolve(nodePath.dirname(orig), await fs.readlink(orig))
+      // Follow the whole link chain to its final (missing) target.
+      let cur = path
+      for (let hops = 0; hops < 40 && (await fs.lstat(cur)).isSymbolicLink(); hops++) {
+        cur = nodePath.resolve(nodePath.dirname(cur), await fs.readlink(cur))
+        target = cur
       }
-    } catch { /* not a link */ }
+    } catch { /* chain ends at a missing file; target holds the last link destination */ }
     if (target) {
       // Link points at a file that does not exist yet. If its directory is there
       // the drive is mounted and we create the file through the link; otherwise

@@ -156,3 +156,24 @@ test('symlink to not-yet-created file in existing dir is created through the lin
   assert.ok((await lstat(link)).isSymbolicLink())
   assert.equal((await readVaultFile(link)).header.ownerId, 'did:key:z')
 })
+
+test('chained symlinks to a not-yet-created file keep the whole chain intact', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const link1 = join(dir, 'a.vault')
+  const link2 = join(dir, 'b.vault')
+  await symlink(link2, link1)
+  await symlink(join(dir, 'real.vault'), link2)
+  await writeVaultFile(link1, blob)
+  assert.ok((await lstat(link1)).isSymbolicLink())
+  assert.ok((await lstat(link2)).isSymbolicLink())
+  assert.equal((await readVaultFile(link1)).header.ownerId, 'did:key:z')
+})
+
+test('invalid sequenceNumber / scryptN -> CORRUPT', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  for (const h of [{ sequenceNumber: -1 }, { sequenceNumber: 1.5 }, { scryptN: 20000 }]) {
+    const p = join(dir, 'bad.vault')
+    await writeFile(p, JSON.stringify({ ...blob, header: { ...blob.header, ...h } }))
+    assert.equal(await code(readVaultFile(p)), 'CORRUPT')
+  }
+})
