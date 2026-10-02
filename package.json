@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build":                "tsc",
+    "test":                "node -r ./node_modules/tsx/dist/cjs/index.cjs --test tests/*.test.ts",
     "validate":             "quoin validate    -s ./src/fabric.ts",
     "inspect":              "quoin inspect     -s ./src/fabric.ts",
     "generate":             "quoin generate    -c ./newel.config.ts",
