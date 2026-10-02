@@ -52,6 +52,28 @@ test('invalid JSON or wrong shape -> CORRUPT', async () => {
   assert.equal(await code(readVaultFile(b)), 'CORRUPT')
 })
 
+test('overwrites existing vault and leaves no .tmp', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const p = join(dir, 'v.vault')
+  await writeVaultFile(p, blob)
+  const next = { ...blob, header: { ...blob.header, sequenceNumber: 4 } } as PersistedVault
+  await writeVaultFile(p, next)
+  assert.deepEqual(await readVaultFile(p), next)
+  assert.deepEqual(await readdir(dir), ['v.vault'])
+})
+
+test('header missing required fields -> CORRUPT', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const p = join(dir, 'v')
+  await writeFile(p, '{"header":{"ownerId":"x","salt":"y"},"encrypted":{}}')
+  assert.equal(await code(readVaultFile(p)), 'CORRUPT')
+})
+
+test('path that is a directory is not mislabelled CORRUPT', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  await assert.rejects(readVaultFile(dir), (e: unknown) => !(e instanceof VaultStorageError))
+})
+
 test('unreadable file -> PERMISSION_DENIED', async (t) => {
   if (process.getuid?.() === 0) return t.skip('root bypasses permissions')
   const dir = await mkdtemp(join(tmpdir(), 'vs-'))
