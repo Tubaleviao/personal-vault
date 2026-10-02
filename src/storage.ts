@@ -59,7 +59,7 @@ export async function detectDriveMissing(path: string): Promise<boolean> {
 
 /**
  * Map an fs error to a VaultStorageError. Errors with no meaningful vault-level
- * meaning (EIO, EISDIR, EXDEV, ...) are returned unchanged rather than being
+ * meaning (EISDIR, EXDEV, ...) are returned unchanged rather than being
  * mislabelled as CORRUPT or NOT_FOUND.
  */
 async function mapError(err: unknown, path: string): Promise<unknown> {
@@ -67,6 +67,10 @@ async function mapError(err: unknown, path: string): Promise<unknown> {
   const code = (err as NodeJS.ErrnoException)?.code
   if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return new VaultStorageError('PERMISSION_DENIED', path, err)
   if (code === 'ENOSPC' || code === 'EDQUOT') return new VaultStorageError('DRIVE_FULL', path, err)
+  // Device vanished or dropped mid-operation (yanked flash drive, dead network/FUSE mount).
+  if (code === 'EIO' || code === 'ENXIO' || code === 'ETIMEDOUT' || code === 'ENOTCONN' || code === 'EHOSTDOWN' || code === 'ESTALE') {
+    return new VaultStorageError('DRIVE_MISSING', path, err)
+  }
   if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'ENODEV') {
     let missing: boolean
     try { missing = await detectDriveMissing(path) } catch (e) { return await mapError(e, path) }
@@ -122,9 +126,22 @@ export async function writeVaultFile(path: string, blob: PersistedVault): Promis
     if (c !== 'ENOENT' && c !== 'ENOTDIR') throw await mapError(err, path)
     // A dangling symlink means its target (e.g. an unplugged drive) is gone:
     // never replace the link with a local file.
-    let isLink = false
-    try { isLink = (await fs.lstat(path)).isSymbolicLink() } catch { /* not a link */ }
-    if (isLink) throw new VaultStorageError('DRIVE_MISSING', path, err)
+    let target: string | undefined
+    try {
+      const orig = path
+      if ((await fs.lstat(orig)).isSymbolicLink()) {
+        target = nodePath.resolve(nodePath.dirname(orig), await fs.readlink(orig))
+      }
+    } catch { /* not a link */ }
+    if (target) {
+      // Link points at a file that does not exist yet. If its directory is there
+      // the drive is mounted and we create the file through the link; otherwise
+      // the drive is gone.
+      let gone: boolean
+      try { gone = await detectDriveMissing(target) } catch (e) { throw await mapError(e, path) }
+      if (gone) throw new VaultStorageError('DRIVE_MISSING', path, err)
+      path = target
+    }
   }
   let missing: boolean
   try { missing = await detectDriveMissing(path) } catch (err) { throw await mapError(err, path) }

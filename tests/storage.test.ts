@@ -147,3 +147,12 @@ test('dangling symlink is not replaced -> DRIVE_MISSING', async () => {
   assert.equal(await code(writeVaultFile(link, blob)), 'DRIVE_MISSING')
   assert.ok((await lstat(link)).isSymbolicLink())
 })
+
+test('symlink to not-yet-created file in existing dir is created through the link', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const link = join(dir, 'v.vault')
+  await symlink(join(dir, 'v-real.vault'), link)
+  await writeVaultFile(link, blob)
+  assert.ok((await lstat(link)).isSymbolicLink())
+  assert.equal((await readVaultFile(link)).header.ownerId, 'did:key:z')
+})
