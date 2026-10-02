@@ -82,7 +82,8 @@ function isPersistedVault(v: unknown): v is PersistedVault {
     && typeof o.header.salt === 'string'
     && typeof o.header.keyVerificationHash === 'string'
     && typeof o.header.sequenceNumber === 'number'
-    && typeof o.header.scryptN === 'number'
+    && Number.isFinite(o.header.sequenceNumber)
+    && Number.isInteger(o.header.scryptN) && o.header.scryptN >= 16384
     && !!o.encrypted && typeof o.encrypted === 'object'
     && typeof o.encrypted.nonce === 'string'
     && typeof o.encrypted.ciphertext === 'string'
@@ -113,12 +114,21 @@ export async function writeVaultFile(path: string, blob: PersistedVault): Promis
   if (missing) throw new VaultStorageError('DRIVE_MISSING', path)
   // Unique, exclusively-created tmp file: no sharing between concurrent writers,
   // never reuses a stale file (and its permissions).
-  const tmp = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
+  // Write through symlinks (e.g. ~/vault -> ~/Dropbox/vault) instead of replacing the link.
+  try { path = await fs.realpath(path) } catch { /* file does not exist yet */ }
+  // Short fixed-length name keeps us under NAME_MAX for long vault filenames.
+  const tmp = nodePath.join(nodePath.dirname(path), `.vault-${process.pid}-${randomBytes(6).toString('hex')}.tmp`)
   try {
     const fh = await fs.open(tmp, 'wx', 0o600)
     try {
       await fh.writeFile(JSON.stringify(blob))
-      await fh.sync() // flush data before rename so a crash cannot leave a truncated vault
+      try {
+        await fh.sync() // flush data before rename so a crash cannot leave a truncated vault
+      } catch (err) {
+        // Some FUSE / network / exFAT mounts do not support fsync; best effort there.
+        const c = (err as NodeJS.ErrnoException)?.code
+        if (c !== 'EINVAL' && c !== 'ENOTSUP' && c !== 'ENOSYS' && c !== 'EOPNOTSUPP') throw err
+      }
     } finally {
       await fh.close()
     }

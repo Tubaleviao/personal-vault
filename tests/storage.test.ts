@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile, readdir, chmod } from 'node:fs/promises'
+import { mkdtemp, writeFile, readdir, chmod, symlink, lstat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -81,4 +81,29 @@ test('unreadable file -> PERMISSION_DENIED', async (t) => {
   await writeVaultFile(p, blob)
   await chmod(p, 0o000)
   assert.equal(await code(readVaultFile(p)), 'PERMISSION_DENIED')
+})
+
+test('writes through a symlinked vault path', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const real = join(dir, 'real.vault')
+  const link = join(dir, 'link.vault')
+  await writeVaultFile(real, blob)
+  await symlink(real, link)
+  await writeVaultFile(link, { ...blob, header: { ...blob.header, sequenceNumber: 4 } } as PersistedVault)
+  assert.ok((await lstat(link)).isSymbolicLink())
+  assert.equal((await readVaultFile(real)).header.sequenceNumber, 4)
+})
+
+test('long vault filename still writes', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const p = join(dir, 'a'.repeat(240) + '.vault')
+  await writeVaultFile(p, blob)
+  assert.deepEqual(await readVaultFile(p), blob)
+})
+
+test('implausible scryptN -> CORRUPT', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const p = join(dir, 'v.vault')
+  await writeFile(p, JSON.stringify({ ...blob, header: { ...blob.header, scryptN: 1 } }))
+  assert.equal(await code(readVaultFile(p)), 'CORRUPT')
 })
