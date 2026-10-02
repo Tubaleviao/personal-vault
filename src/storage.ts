@@ -10,6 +10,7 @@ import { promises as fs } from 'fs'
 import * as nodePath from 'path'
 import { randomBytes } from 'crypto'
 import type { PersistedVault } from './vault'
+import { SCRYPT_N_MIN, SCRYPT_N_MAX } from './crypto'
 
 export interface StorageConfig {
   path: string
@@ -83,7 +84,9 @@ function isPersistedVault(v: unknown): v is PersistedVault {
     && typeof o.header.keyVerificationHash === 'string'
     && typeof o.header.sequenceNumber === 'number'
     && Number.isFinite(o.header.sequenceNumber)
-    && Number.isInteger(o.header.scryptN) && o.header.scryptN >= 16384
+    // scryptN is absent in legacy vaults; Vault.open falls back to SCRYPT_N_V1.
+    && (o.header.scryptN === undefined
+      || (Number.isInteger(o.header.scryptN) && o.header.scryptN >= SCRYPT_N_MIN && o.header.scryptN <= SCRYPT_N_MAX))
     && !!o.encrypted && typeof o.encrypted === 'object'
     && typeof o.encrypted.nonce === 'string'
     && typeof o.encrypted.ciphertext === 'string'
@@ -109,13 +112,24 @@ export async function readVaultFile(path: string): Promise<PersistedVault> {
 
 export async function writeVaultFile(path: string, blob: PersistedVault): Promise<void> {
   if (!path) throw new VaultStorageError('NOT_CONFIGURED')
+  // Write through symlinks (e.g. ~/vault -> ~/Dropbox/vault) instead of replacing the link.
+  // Resolve first so the drive check runs against the real target's directory.
+  try {
+    path = await fs.realpath(path)
+  } catch (err) {
+    const c = (err as NodeJS.ErrnoException)?.code
+    if (c !== 'ENOENT' && c !== 'ENOTDIR') throw await mapError(err, path)
+    // A dangling symlink means its target (e.g. an unplugged drive) is gone:
+    // never replace the link with a local file.
+    let isLink = false
+    try { isLink = (await fs.lstat(path)).isSymbolicLink() } catch { /* not a link */ }
+    if (isLink) throw new VaultStorageError('DRIVE_MISSING', path, err)
+  }
   let missing: boolean
   try { missing = await detectDriveMissing(path) } catch (err) { throw await mapError(err, path) }
   if (missing) throw new VaultStorageError('DRIVE_MISSING', path)
   // Unique, exclusively-created tmp file: no sharing between concurrent writers,
   // never reuses a stale file (and its permissions).
-  // Write through symlinks (e.g. ~/vault -> ~/Dropbox/vault) instead of replacing the link.
-  try { path = await fs.realpath(path) } catch { /* file does not exist yet */ }
   // Short fixed-length name keeps us under NAME_MAX for long vault filenames.
   const tmp = nodePath.join(nodePath.dirname(path), `.vault-${process.pid}-${randomBytes(6).toString('hex')}.tmp`)
   try {

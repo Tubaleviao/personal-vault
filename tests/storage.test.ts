@@ -107,3 +107,27 @@ test('implausible scryptN -> CORRUPT', async () => {
   await writeFile(p, JSON.stringify({ ...blob, header: { ...blob.header, scryptN: 1 } }))
   assert.equal(await code(readVaultFile(p)), 'CORRUPT')
 })
+
+test('legacy header without scryptN is readable', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const p = join(dir, 'v.vault')
+  const legacy = { ...blob, header: { ...blob.header } } as any
+  delete legacy.header.scryptN
+  await writeFile(p, JSON.stringify(legacy))
+  assert.deepEqual(await readVaultFile(p), legacy)
+})
+
+test('out-of-range scryptN -> CORRUPT', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const p = join(dir, 'v.vault')
+  await writeFile(p, JSON.stringify({ ...blob, header: { ...blob.header, scryptN: 2 ** 30 } }))
+  assert.equal(await code(readVaultFile(p)), 'CORRUPT')
+})
+
+test('dangling symlink is not replaced -> DRIVE_MISSING', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'vs-'))
+  const link = join(dir, 'v.vault')
+  await symlink(join(dir, 'gone-drive', 'v.vault'), link)
+  assert.equal(await code(writeVaultFile(link, blob)), 'DRIVE_MISSING')
+  assert.ok((await lstat(link)).isSymbolicLink())
+})
