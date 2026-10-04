@@ -16,13 +16,17 @@ fn vault_path() -> Result<PathBuf, String> {
     Ok(vault_dir()?.join("vault.json"))
 }
 
-/// Reject filenames that could escape the vault directory.
+/// Reserved: holds the external storage config, never a vault.
+const STORAGE_CONFIG_FILE: &str = "storage.json";
+
+/// Reject filenames that could escape the vault directory (or collide with the storage config).
 fn sanitize_vault_filename(name: &str) -> Result<&str, String> {
     if name.is_empty()
         || name.contains("..")
         || name.contains('/')
         || name.contains('\\')
         || !name.ends_with(".json")
+        || name == STORAGE_CONFIG_FILE
     {
         return Err(format!("Invalid vault filename: {name}"));
     }
@@ -46,7 +50,7 @@ pub fn read_vault_file(name: Option<String>) -> Result<Option<String>, String> {
 }
 
 fn storage_config_path() -> Result<PathBuf, String> {
-    Ok(vault_dir()?.join("storage.json"))
+    Ok(vault_dir()?.join(STORAGE_CONFIG_FILE))
 }
 
 /// Map an io error to a `CODE: message` string; the frontend parses the code prefix
@@ -281,7 +285,7 @@ pub fn list_vault_files() -> Result<Vec<serde_json::Value>, String> {
             None => continue,
         };
 
-        if !name.ends_with(".json") || name.ends_with(".tmp") {
+        if !name.ends_with(".json") || name.ends_with(".tmp") || name == STORAGE_CONFIG_FILE {
             continue;
         }
 

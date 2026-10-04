@@ -367,7 +367,10 @@ export class Vault {
     const local = this._state
     const remote = other._state
 
-    const tombstones: Record<string, string> = { ...remote.deletedClaims, ...local.deletedClaims }
+    const tombstones: Record<string, string> = { ...remote.deletedClaims }
+    for (const [id, t] of Object.entries(local.deletedClaims ?? {})) {
+      if (!tombstones[id] || t > tombstones[id]) tombstones[id] = t
+    }
     const revived: Record<string, string> = { ...remote.revivedClaims }
     for (const [id, t] of Object.entries(local.revivedClaims ?? {})) {
       if (!revived[id] || t > revived[id]) revived[id] = t
@@ -424,7 +427,14 @@ export class Vault {
 
     const remoteTail = remote.auditLog[remote.auditLog.length - 1]
     // Preserve the other device's events (bundle access, grants, ...) verbatim inside the merge entry.
-    const localIds = new Set(local.auditLog.map(e => e.id))
+    // Entries already embedded by an earlier merge count as present, so repeat merges do not re-embed them.
+    const localIds = new Set<string>()
+    const collect = (e: AuditEntry): void => {
+      localIds.add(e.id)
+      const nested = (e.detail as { mergedEntries?: AuditEntry[] } | null)?.mergedEntries
+      if (e.action === 'merge' && Array.isArray(nested)) nested.forEach(collect)
+    }
+    local.auditLog.forEach(collect)
     const remoteOnly = remote.auditLog.filter(e => !localIds.has(e.id))
     this._header.sequenceNumber = Math.max(
       this._header.sequenceNumber ?? 0, other._header.sequenceNumber ?? 0,
