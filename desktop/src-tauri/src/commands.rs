@@ -58,6 +58,8 @@ fn external_io_error(path: &std::path::Path, err: &std::io::Error) -> String {
     let code = match err.kind() {
         ErrorKind::NotFound => if missing_parent() { "DRIVE_MISSING" } else { "NOT_FOUND" },
         ErrorKind::PermissionDenied => "PERMISSION_DENIED",
+        // Raw errno values below are Unix-specific; Windows codes are covered by ErrorKind.
+        _ if cfg!(not(unix)) => "IO",
         _ => match os {
             Some(28) => "DRIVE_FULL",                                  // ENOSPC
             Some(n) if is_quota_errno(n) => "DRIVE_FULL",              // EDQUOT
@@ -115,7 +117,7 @@ pub fn set_storage_path(path: Option<String>) -> Result<(), String> {
 }
 
 /// Read the vault blob at the external storage path. Errors are `CODE: message`.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn read_external_vault(path: String) -> Result<String, String> {
     let p = std::path::Path::new(&path);
     fs::read_to_string(p).map_err(|e| external_io_error(p, &e))
@@ -126,8 +128,13 @@ pub fn read_external_vault(path: String) -> Result<String, String> {
 /// refuses to create missing parent directories (an unplugged drive must not be
 /// papered over with a local folder). A dangling symlink is followed to its
 /// missing target; if that target's directory is gone the drive is missing.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
+    // Only the user-configured storage path may be written; the webview cannot pick an
+    // arbitrary file to overwrite.
+    if get_storage_path()?.as_deref() != Some(path.as_str()) {
+        return Err("NOT_CONFIGURED: path does not match the configured storage path".to_string());
+    }
     let requested = std::path::Path::new(&path);
     let target = match fs::canonicalize(requested) {
         Ok(p) => p,
@@ -157,9 +164,8 @@ pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let mut tmp_name = std::ffi::OsString::from(".");
-    tmp_name.push(target.file_name().unwrap_or_default());
-    tmp_name.push(format!(".{}.{}.tmp", std::process::id(), nanos));
+    // Fixed-length name so a long vault filename cannot exceed NAME_MAX.
+    let tmp_name = format!(".vault-sync.{}.{}.tmp", std::process::id(), nanos);
     let tmp_path = target.with_file_name(tmp_name);
     let mut opts = fs::OpenOptions::new();
     opts.write(true).create_new(true);

@@ -94,7 +94,7 @@ export async function setStoragePath(path: string | null): Promise<void> {
 }
 
 const SCRYPT_N_MIN = 16384
-const SCRYPT_N_MAX = 2 ** 22
+const SCRYPT_N_MAX = 2 ** 20 // keep in sync with SCRYPT_N_MAX in src/crypto.ts
 
 /** Shape check for a sealed vault; mirrors isPersistedVault in src/storage.ts. */
 function looksLikeVault(o: unknown): o is PersistedVault {
@@ -131,16 +131,46 @@ export async function readStorageVault(path?: string | null): Promise<PersistedV
 
 const seqOf = (v: PersistedVault) => v.header.sequenceNumber ?? 0
 
+// ── Sync base ────────────────────────────────────────────────────────────────
+// Every seal gets a fresh random nonce. We remember the nonce of the last copy that
+// was known identical on both sides (after a mirror, adopt or match). A copy whose
+// nonce differs from that base has changed since; if both sides changed, they diverged
+// even when their sequence numbers differ.
+
+const baseKey = () => `vault-sync-base:${_activeVaultName}`
+
+export function getSyncBase(): string | null {
+  try { return localStorage.getItem(baseKey()) } catch { return null }
+}
+
+function setSyncBase(v: PersistedVault): void {
+  try { localStorage.setItem(baseKey(), v.encrypted.nonce) } catch { /* storage unavailable */ }
+}
+
 export type CopyComparison = 'local' | 'remote' | 'same' | 'conflict'
 
 /**
- * Which copy is newer, by header.sequenceNumber. Equal sequence numbers with
- * different sealed content are a divergence ('conflict'), not 'same'.
+ * Which copy is newer. With a known sync `base` (nonce of the last copy both sides shared),
+ * changes on both sides are a 'conflict'. Without one, falls back to header.sequenceNumber;
+ * equal sequence numbers with different sealed content are a 'conflict', not 'same'.
  */
-export function compareCopies(local: PersistedVault | null, remote: PersistedVault | null): CopyComparison {
+export function compareCopies(
+  local: PersistedVault | null,
+  remote: PersistedVault | null,
+  base: string | null = null,
+): CopyComparison {
   if (!local && !remote) return 'same'
   if (!local) return 'remote'
   if (!remote) return 'local'
+  if (local.encrypted.nonce === remote.encrypted.nonce
+    && local.encrypted.ciphertext === remote.encrypted.ciphertext) return 'same'
+  if (base) {
+    const localChanged = local.encrypted.nonce !== base
+    const remoteChanged = remote.encrypted.nonce !== base
+    if (localChanged && remoteChanged) return 'conflict'
+    if (remoteChanged) return 'remote'
+    if (localChanged) return 'local'
+  }
   const a = seqOf(local), b = seqOf(remote)
   if (a !== b) return a > b ? 'local' : 'remote'
   return local.encrypted.ciphertext === remote.encrypted.ciphertext
@@ -168,13 +198,13 @@ async function mirrorToStorage(vault: PersistedVault, force = false): Promise<vo
       }
       if (remote) {
         if (remote.header.ownerId !== vault.header.ownerId) throw new StorageError('OWNER_MISMATCH')
-        if (compareCopies(vault, remote) !== 'local') {
-          if (compareCopies(vault, remote) === 'same') { _lastSyncError = null; return }
-          throw new StorageError('CONFLICT')
-        }
+        const cmp = compareCopies(vault, remote, getSyncBase())
+        if (cmp === 'same') { setSyncBase(vault); _lastSyncError = null; return }
+        if (cmp !== 'local') throw new StorageError('CONFLICT')
       }
     }
     await invoke<void>('write_external_vault', { path, blob: JSON.stringify(vault) })
+    setSyncBase(vault)
     _lastSyncError = null
   } catch (err) {
     _lastSyncError = err instanceof StorageError ? err : toStorageError(err)
@@ -188,6 +218,8 @@ export function forceMirrorToStorage(vault: PersistedVault): Promise<void> {
 
 export interface SyncedRead {
   persisted: PersistedVault | null
+  /** The local copy, if any; fall back to it when `persisted` (a storage copy) cannot be opened. */
+  local: PersistedVault | null
   /** True when `persisted` came from storage and the local file has NOT been refreshed yet. */
   fromStorage: boolean
 }
@@ -205,9 +237,9 @@ export async function readVaultFileSynced(): Promise<SyncedRead> {
     path = await getStoragePath()
   } catch (err) {
     _lastSyncError = err as StorageError
-    return { persisted: local, fromStorage: false }
+    return { persisted: local, local, fromStorage: false }
   }
-  if (!path) { _lastSyncError = null; return { persisted: local, fromStorage: false } }
+  if (!path) { _lastSyncError = null; return { persisted: local, local, fromStorage: false } }
   let remote: PersistedVault | null = null
   try {
     remote = await readStorageVault(path)
@@ -220,18 +252,20 @@ export async function readVaultFileSynced(): Promise<SyncedRead> {
   }
   if (local && remote && local.header.ownerId !== remote.header.ownerId) {
     _lastSyncError = new StorageError('OWNER_MISMATCH')
-    return { persisted: local, fromStorage: false }
+    return { persisted: local, local, fromStorage: false }
   }
-  const newer = compareCopies(local, remote)
-  if (newer === 'remote' && remote) return { persisted: remote, fromStorage: true }
+  const newer = compareCopies(local, remote, getSyncBase())
+  if (newer === 'same' && remote) setSyncBase(remote)
+  if (newer === 'remote' && remote) return { persisted: remote, local, fromStorage: true }
   if (newer === 'conflict') _lastSyncError = new StorageError('CONFLICT')
   else if (newer === 'local' && local) await mirrorToStorage(local)
-  return { persisted: local, fromStorage: false }
+  return { persisted: local, local, fromStorage: false }
 }
 
 /** Refresh the local vault file from a storage copy (no mirror back). Call only after a successful unlock. */
 export async function adoptStorageCopy(vault: PersistedVault): Promise<void> {
   await invoke<void>('write_vault_file', { blob: JSON.stringify(vault), name: _activeVaultName })
+  setSyncBase(vault)
 }
 
 export async function vaultFileExists(): Promise<boolean> {

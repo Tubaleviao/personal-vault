@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import type { Vault } from '@vault/vault'
 import {
-  getStoragePath, setStoragePath, readStorageVault, getLastSyncError, compareCopies,
+  getStoragePath, setStoragePath, getSyncBase, readStorageVault, getLastSyncError, compareCopies,
   readVaultFile, forceMirrorToStorage, StorageError, STORAGE_MESSAGES,
 } from '../tauriVault'
 
@@ -52,12 +52,12 @@ export default function Storage({ vault }: Props) {
     try {
       const remote = await readStorageVault(input.trim() || null)
       const local = await readVaultFile()
-      const newer = compareCopies(local, remote)
+      const newer = compareCopies(local, remote, getSyncBase())
       if (local && local.header.ownerId !== remote.header.ownerId) throw new StorageError('OWNER_MISMATCH')
       const msg = newer === 'same'
         ? `Storage copy is up to date (sequence ${remote.header.sequenceNumber ?? 0}).`
         : newer === 'conflict'
-          ? 'Storage copy and local copy have diverged (same sequence, different content). Neither will be overwritten automatically.'
+          ? 'Storage copy and local copy have diverged (both have changes the other lacks). Neither will be overwritten automatically.'
         : newer === 'remote'
           ? `Storage copy is newer (sequence ${remote.header.sequenceNumber ?? 0} vs local ${local?.header.sequenceNumber ?? 0}). It will be used next time you unlock.`
           : `Local copy is newer (sequence ${local?.header.sequenceNumber ?? 0} vs storage ${remote.header.sequenceNumber ?? 0}). It will be written to storage on the next save.`
@@ -77,10 +77,23 @@ export default function Storage({ vault }: Props) {
       const local = await readVaultFile()
       if (!local) throw new Error('No local vault file.')
       // Overwriting is destructive: confirm unless storage is empty, older, or already identical.
-      const remote = await readStorageVault().catch(() => null)
+      // Only a missing file may be overwritten without asking; an unreadable or
+      // foreign file needs explicit confirmation.
+      let remote: Awaited<ReturnType<typeof readStorageVault>> | null = null
+      try {
+        remote = await readStorageVault()
+      } catch (err) {
+        if (!(err instanceof StorageError && err.code === 'NOT_FOUND')) {
+          const detail = err instanceof StorageError ? err.message : describe(err)
+          if (!window.confirm(`The file at the storage path could not be verified as a vault (${detail}). Overwrite it with the local copy? This cannot be undone.`)) {
+            setStatus({ ok: false, msg: 'Cancelled; storage file left untouched.' })
+            return
+          }
+        }
+      }
       if (remote) {
         const sameOwner = remote.header.ownerId === local.header.ownerId
-        if (!sameOwner || compareCopies(local, remote) !== 'local') {
+        if (!sameOwner || compareCopies(local, remote, getSyncBase()) !== 'local') {
           const why = !sameOwner
             ? 'The storage file belongs to a DIFFERENT vault.'
             : 'The storage copy is newer than or has diverged from the local copy.'
