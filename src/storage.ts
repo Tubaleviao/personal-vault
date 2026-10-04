@@ -189,8 +189,7 @@ export async function mergeVaultsWithSummary(
     const summary = a.mergeFrom(b)
     return { vault: await a.seal(), summary }
   } finally {
-    await b?.discard()
-    await a.discard()
+    try { await b?.discard() } finally { await a.discard() }
   }
 }
 

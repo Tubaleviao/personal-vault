@@ -271,7 +271,9 @@ export class Vault {
   importClaim(claim: Claim): void {
     this._assertUnlocked()
     if (this._state.claims[claim.id]) return
-    this._state.claims[claim.id] = { ...claim, ownerId: this._state.owner.id }
+    // Explicit re-import revives a claim deleted earlier: drop its tombstone so a merge keeps it.
+    if (this._state.deletedClaims) delete this._state.deletedClaims[claim.id]
+    this._state.claims[claim.id] = { ...claim, ownerId: this._state.owner.id, updatedAt: new Date().toISOString() }
     this._appendAudit('claim-added', 'owner', null, { claimType: claim.type })
   }
 
@@ -357,10 +359,6 @@ export class Vault {
     const remote = other._state
 
     const tombstones: Record<string, string> = { ...remote.deletedClaims, ...local.deletedClaims }
-    for (const [id, at] of Object.entries(remote.deletedClaims ?? {})) {
-      const mine = local.deletedClaims?.[id]
-      tombstones[id] = mine && mine < at ? mine : at
-    }
 
     for (const id of new Set([...Object.keys(local.claims), ...Object.keys(remote.claims)])) {
       const l = local.claims[id]
@@ -404,7 +402,10 @@ export class Vault {
     this._appendAudit('merge', 'owner', null, {
       mergedFromHash: remoteTail?.entryHash ?? null,
       mergedFromSequence: other._header.sequenceNumber ?? 0,
-      ...summary,
+      // Counts only: the per-claim overwritten[] list would grow the tamper-evident log without bound.
+      identical: summary.identical, localWins: summary.localWins, remoteWins: summary.remoteWins,
+      onlyLocal: summary.onlyLocal, onlyRemote: summary.onlyRemote, deleted: summary.deleted,
+      grantsRevoked: summary.grantsRevoked, grantsAdded: summary.grantsAdded,
     })
     return summary
   }

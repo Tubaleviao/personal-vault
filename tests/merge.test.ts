@@ -122,3 +122,12 @@ test('merge: wrong passphrase and foreign vault are rejected', async () => {
   const other = await base(() => {})
   await assert.rejects(mergeVaults(l, other, PW), /different owners/)
 })
+
+test('merge: re-imported claim after delete survives merge', async () => {
+  let saved: any
+  const b = await base(v => { saved = v.addClaim(claim('Ann')) })
+  const l = await edit(b, v => { v.deleteClaim(saved.id); v.importClaim(saved) })
+  const r = await edit(b, () => {})
+  const merged = await Vault.open(await mergeVaults(l, r, PW), PW)
+  assert.equal(merged.listClaims().some(c => c.id === saved.id), true)
+})
