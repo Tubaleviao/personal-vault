@@ -9,7 +9,8 @@
 import { promises as fs } from 'fs'
 import * as nodePath from 'path'
 import { randomBytes } from 'crypto'
-import type { PersistedVault } from './vault'
+import { Vault } from './vault'
+import type { PersistedVault, MergeSummary } from './vault'
 import { isPersistedVault } from './vault-file'
 
 export interface StorageConfig {
@@ -153,4 +154,48 @@ export async function writeVaultFile(path: string, blob: PersistedVault): Promis
     await fs.unlink(tmp).catch(() => {})
     throw await mapError(err, path)
   }
+}
+
+// ── Diverged-copy merge (Phase 3.5.3) ─────────────────────────────────────────
+
+/**
+ * True when `local` and `remote` are independent edits of the same vault: both
+ * advanced past `baseSequence` (the sequence number last shared by both sides).
+ * Without a base, only the unambiguous case is reported: equal sequence numbers
+ * with different ciphertext. Different vaults (owner mismatch) never diverge.
+ */
+export function detectDivergence(local: PersistedVault, remote: PersistedVault, baseSequence?: number): boolean {
+  if (local.header.ownerId !== remote.header.ownerId) return false
+  const l = local.header.sequenceNumber ?? 0
+  const r = remote.header.sequenceNumber ?? 0
+  if (baseSequence === undefined) {
+    return l === r && local.encrypted.nonce !== remote.encrypted.nonce
+  }
+  return l > baseSequence && r > baseSequence
+}
+
+/**
+ * Open both copies with `passphrase`, merge remote into local (see
+ * Vault.mergeFrom for the conflict policy) and return the sealed result with
+ * a summary for the UI. Throws if the passphrase is wrong or owners differ.
+ */
+export async function mergeVaultsWithSummary(
+  local: PersistedVault, remote: PersistedVault, passphrase: string,
+): Promise<{ vault: PersistedVault; summary: MergeSummary }> {
+  const a = await Vault.open(local, passphrase)
+  let b: Vault | undefined
+  try {
+    b = await Vault.open(remote, passphrase)
+    const summary = a.mergeFrom(b)
+    return { vault: await a.seal(), summary }
+  } finally {
+    await b?.discard()
+    await a.discard()
+  }
+}
+
+export async function mergeVaults(
+  local: PersistedVault, remote: PersistedVault, passphrase: string,
+): Promise<PersistedVault> {
+  return (await mergeVaultsWithSummary(local, remote, passphrase)).vault
 }

@@ -218,12 +218,12 @@ A merge is needed when, at sync time, **both** the local copy and the external c
 
 ### Build steps
 
-- [ ] `detectDivergence()` in `src/storage.ts`
-- [ ] `mergeVaults()` in `src/storage.ts` — claims union, revocation-wins for grants, `merge` audit entry
+- [x] `detectDivergence()` in `src/storage.ts`
+- [x] `mergeVaults()` in `src/storage.ts` — claims union, revocation-wins for grants, `merge` audit entry
 - [ ] Desktop: merge banner and conflict summary in the Storage screen
 - [ ] Desktop: "Merge and save" action — write merged vault to both paths
 - [ ] Desktop: "Keep local" / "Keep external" escape hatches
-- [ ] Tests: diverged-vault fixture pairs covering identical, conflict, delete-vs-modify, and revocation cases
+- [x] Tests: diverged-vault fixture pairs covering identical, conflict, delete-vs-modify, and revocation cases
 
 ---
 

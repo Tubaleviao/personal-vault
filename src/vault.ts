@@ -32,6 +32,8 @@ export interface Claim {
   source: ClaimSource
   verification: ClaimVerification
   issuedAt: string
+  /** Last modification time; absent on claims written before merge support (falls back to issuedAt). */
+  updatedAt?: string
   expiresAt: string | null
   issuerDid: string | null
 }
@@ -60,6 +62,7 @@ export type AuditAction =
   | 'vault-unlocked' | 'vault-locked' | 'vault-sealed'
   | 'recovery-started' | 'recovery-completed'
   | 'bundle-accessed'
+  | 'merge'
 
 export interface AuditEntry {
   id: string
@@ -73,6 +76,20 @@ export interface AuditEntry {
   createdAt: string
 }
 
+export interface MergeSummary {
+  identical: number
+  localWins: number
+  remoteWins: number
+  onlyLocal: number
+  onlyRemote: number
+  /** Claims removed because one side had deleted them. */
+  deleted: number
+  /** Grants that became revoked because the other side had revoked them. */
+  grantsRevoked: number
+  grantsAdded: number
+  overwritten: { claimId: string; claimType: string; kept: 'local' | 'remote' }[]
+}
+
 // ── Vault state (the plaintext stored encrypted on disk) ─────────────────────
 
 interface VaultState {
@@ -83,6 +100,8 @@ interface VaultState {
     createdAt: string
   }
   claims: Record<string, Claim>
+  /** claimId → deletion time. Lets a merge tell "deleted here" from "never seen here". */
+  deletedClaims?: Record<string, string>
   grants: Record<string, Grant>
   auditLog: AuditEntry[]
 }
@@ -192,7 +211,7 @@ export class Vault {
     }
     const state: VaultState = JSON.parse(plaintext) as VaultState
 
-    const vault = new Vault(state, masterKey, persisted.header)
+    const vault = new Vault(state, masterKey, { ...persisted.header })
     vault._appendAudit('vault-unlocked', 'owner', null, null)
     return vault
   }
@@ -230,6 +249,7 @@ export class Vault {
       ownerId: this._state.owner.id,
       issuedAt: new Date().toISOString(),
     }
+    claim.updatedAt = claim.issuedAt
     this._state.claims[claim.id] = claim
     this._appendAudit('claim-added', 'owner', null, { claimType: claim.type })
     return claim
@@ -260,7 +280,7 @@ export class Vault {
     const claim = this._state.claims[id]
     if (!claim) throw new Error(`Claim not found: ${id}`)
     const originalType = claim.type
-    Object.assign(claim, patch)
+    Object.assign(claim, patch, { updatedAt: new Date().toISOString() })
     this._appendAudit('claim-updated', 'owner', null, { claimType: originalType })
     return claim
   }
@@ -270,6 +290,7 @@ export class Vault {
     const claim = this._state.claims[id]
     if (!claim) throw new Error(`Claim not found: ${id}`)
     delete this._state.claims[id]
+    ;(this._state.deletedClaims ??= {})[id] = new Date().toISOString()
     this._appendAudit('claim-deleted', 'owner', null, { claimType: claim.type })
   }
 
@@ -304,6 +325,88 @@ export class Vault {
     grant.status = 'revoked'
     grant.revokedAt = new Date().toISOString()
     this._appendAudit('grant-revoked', 'owner', id, { granteeRef: grant.granteeRef })
+  }
+
+  // ── Merge ──────────────────────────────────────────────────────────────────
+
+  /** Zero the master key without sealing — for throw-away instances. */
+  async discard(): Promise<void> {
+    await zeroKey(this._masterKey)
+    this._locked = true
+  }
+
+  /**
+   * Merge a diverged copy of the same vault into this one (Phase 3.5.3).
+   * Claims: union, last `updatedAt` wins, deletion beats modification.
+   * Grants: union, revoked > expired > active.
+   * Audit: this chain is kept; one `merge` entry records the other chain's tail hash.
+   * `header.sequenceNumber` becomes max(both) so the next seal() yields max + 1.
+   */
+  mergeFrom(other: Vault): MergeSummary {
+    this._assertUnlocked()
+    other._assertUnlocked()
+    if (other._state.owner.id !== this._state.owner.id) {
+      throw new Error('Cannot merge vaults with different owners')
+    }
+    const summary: MergeSummary = {
+      identical: 0, localWins: 0, remoteWins: 0,
+      onlyLocal: 0, onlyRemote: 0, deleted: 0, grantsRevoked: 0, grantsAdded: 0,
+      overwritten: [],
+    }
+    const local = this._state
+    const remote = other._state
+
+    const tombstones: Record<string, string> = { ...remote.deletedClaims, ...local.deletedClaims }
+    for (const [id, at] of Object.entries(remote.deletedClaims ?? {})) {
+      const mine = local.deletedClaims?.[id]
+      tombstones[id] = mine && mine < at ? mine : at
+    }
+
+    for (const id of new Set([...Object.keys(local.claims), ...Object.keys(remote.claims)])) {
+      const l = local.claims[id]
+      const r = remote.claims[id]
+      if (tombstones[id]) {
+        if (l || r) summary.deleted++
+        delete local.claims[id]
+        continue
+      }
+      if (l && !r) { summary.onlyLocal++; continue }
+      if (!l && r) { local.claims[id] = { ...r, ownerId: local.owner.id }; summary.onlyRemote++; continue }
+      const lt = l!.updatedAt ?? l!.issuedAt
+      const rt = r!.updatedAt ?? r!.issuedAt
+      if (lt === rt) {
+        summary.identical++
+      } else if (rt > lt) {
+        local.claims[id] = { ...r!, ownerId: local.owner.id }
+        summary.remoteWins++
+        summary.overwritten.push({ claimId: id, claimType: r!.type, kept: 'remote' })
+      } else {
+        summary.localWins++
+        summary.overwritten.push({ claimId: id, claimType: l!.type, kept: 'local' })
+      }
+    }
+    if (Object.keys(tombstones).length > 0) local.deletedClaims = tombstones
+
+    const rank: Record<GrantStatus, number> = { active: 0, expired: 1, revoked: 2 }
+    for (const [id, r] of Object.entries(remote.grants)) {
+      const l = local.grants[id]
+      if (!l) { local.grants[id] = { ...r }; summary.grantsAdded++; continue }
+      if (rank[r.status] > rank[l.status]) {
+        local.grants[id] = { ...r }
+        if (r.status === 'revoked') summary.grantsRevoked++
+      }
+    }
+
+    const remoteTail = remote.auditLog[remote.auditLog.length - 1]
+    this._header.sequenceNumber = Math.max(
+      this._header.sequenceNumber ?? 0, other._header.sequenceNumber ?? 0,
+    )
+    this._appendAudit('merge', 'owner', null, {
+      mergedFromHash: remoteTail?.entryHash ?? null,
+      mergedFromSequence: other._header.sequenceNumber ?? 0,
+      ...summary,
+    })
+    return summary
   }
 
   // ── Audit log ──────────────────────────────────────────────────────────────
