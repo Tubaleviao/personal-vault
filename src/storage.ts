@@ -10,7 +10,7 @@ import { promises as fs } from 'fs'
 import * as nodePath from 'path'
 import { randomBytes } from 'crypto'
 import type { PersistedVault } from './vault'
-import { SCRYPT_N_MIN, SCRYPT_N_MAX } from './crypto'
+import { isPersistedVault } from './vault-file'
 
 export interface StorageConfig {
   path: string
@@ -77,25 +77,6 @@ async function mapError(err: unknown, path: string): Promise<unknown> {
     return new VaultStorageError(missing ? 'DRIVE_MISSING' : 'NOT_FOUND', path, err)
   }
   return err
-}
-
-function isPersistedVault(v: unknown): v is PersistedVault {
-  const o = v as PersistedVault | null
-  return !!o && typeof o === 'object'
-    && !!o.header && typeof o.header === 'object'
-    && typeof o.header.ownerId === 'string'
-    && typeof o.header.salt === 'string'
-    && typeof o.header.keyVerificationHash === 'string'
-    // sequenceNumber is absent in legacy vaults; Vault.seal and relay treat it as 0.
-    && (o.header.sequenceNumber === undefined
-      || (Number.isInteger(o.header.sequenceNumber) && o.header.sequenceNumber >= 0))
-    // scryptN is absent in legacy vaults; Vault.open falls back to SCRYPT_N_V1.
-    && (o.header.scryptN === undefined
-      || (Number.isInteger(o.header.scryptN) && o.header.scryptN >= SCRYPT_N_MIN && o.header.scryptN <= SCRYPT_N_MAX
-        && (o.header.scryptN & (o.header.scryptN - 1)) === 0))
-    && !!o.encrypted && typeof o.encrypted === 'object'
-    && typeof o.encrypted.nonce === 'string'
-    && typeof o.encrypted.ciphertext === 'string'
 }
 
 export async function readVaultFile(path: string): Promise<PersistedVault> {

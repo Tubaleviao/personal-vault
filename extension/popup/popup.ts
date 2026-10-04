@@ -527,6 +527,72 @@ mergeBackBtn.addEventListener('click', () => {
   mainPanel.style.display = 'block'
 })
 
+// ── Vault file import (no-desktop-app fallback) ───────────────────────────────
+
+/**
+ * Builds a "pick a vault file + passphrase" control. Unlocked: merges the file's
+ * claims into the active vault. Locked: installs it as the browser vault.
+ */
+function mountFileImport(container: HTMLElement, unlocked: boolean) {
+  const toggle = document.createElement('button')
+  toggle.type = 'button'
+  toggle.textContent = unlocked ? 'Import vault file…' : 'Restore from a vault file…'
+  toggle.style.cssText = 'width:100%;background:transparent;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer'
+
+  const form = document.createElement('div')
+  form.style.cssText = 'display:none;flex-direction:column;gap:6px'
+  const file = document.createElement('input')
+  file.type = 'file'
+  file.accept = '.json,.vault,application/json'
+  const pass = document.createElement('input')
+  pass.type = 'password'
+  pass.placeholder = 'Passphrase of that vault'
+  const go = document.createElement('button')
+  go.type = 'button'
+  go.className = 'btn-primary'
+  go.textContent = unlocked ? 'Merge into this vault' : 'Restore vault'
+  const status = document.createElement('div')
+  status.style.cssText = 'font-size:11px;min-height:14px'
+  form.append(file, pass, go, status)
+
+  toggle.onclick = () => { form.style.display = form.style.display === 'none' ? 'flex' : 'none' }
+  go.onclick = async () => {
+    const f = file.files?.[0]
+    if (!f || !pass.value) {
+      status.style.color = '#f87171'
+      status.textContent = 'Choose a file and enter its passphrase'
+      return
+    }
+    go.setAttribute('disabled', 'true')
+    status.style.color = '#64748b'
+    status.textContent = 'Importing…'
+    try {
+      const text = await f.text()
+      const res = await send<BackgroundToPopup>({ type: 'IMPORT_VAULT_FILE', text, passphrase: pass.value }) as
+        { type: 'MERGE_RESULT'; ok: boolean; added: number; error?: string }
+        | { type: 'IMPORT_FILE_RESULT'; ok: boolean; error?: string } | null
+      pass.value = ''
+      if (!res?.ok) {
+        status.style.color = '#f87171'
+        status.textContent = res?.error ?? 'Import failed'
+        return
+      }
+      status.style.color = '#22c55e'
+      if (res.type === 'MERGE_RESULT') {
+        status.textContent = `Imported ${res.added} new claim${res.added === 1 ? '' : 's'}`
+      } else {
+        await init()
+      }
+    } finally {
+      go.removeAttribute('disabled')
+    }
+  }
+  container.append(toggle, form)
+}
+
+mountFileImport(document.getElementById('file-import-locked')!, false)
+mountFileImport(document.getElementById('file-import-unlocked')!, true)
+
 // Show whether the desktop native host is reachable
 async function updateNativeBadge() {
   const res = await send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }) as { type: 'NATIVE_HOST_STATUS'; available: boolean } | null

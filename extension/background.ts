@@ -35,6 +35,7 @@ import {
 } from '../src/form-filler'
 import type { CredentialValue } from '../src/form-filler'
 import { Vault } from '../src/vault'
+import { parseVaultFileText } from '../src/vault-file'
 import type { PersistedVault } from '../src/vault'
 import { generateMnemonicBundle, restoreFromMnemonic, verifyMnemonicCommitment } from '../src/recovery'
 import { didFromSeed } from '../src/did'
@@ -596,6 +597,55 @@ async function handleMessage(
       sendResponse({ type: 'MERGE_RESULT', ok: true, added })
     } catch (err) {
       sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: String(err) })
+    }
+    return
+  }
+
+  if (message.type === 'IMPORT_VAULT_FILE') {
+    const blob = parseVaultFileText(message.text)
+    if (!blob) {
+      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'The file does not appear to be a valid vault.' })
+      return
+    }
+    if (!message.passphrase) {
+      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'No passphrase' })
+      return
+    }
+
+    let other: Vault
+    try {
+      other = await Vault.open(blob, message.passphrase)
+    } catch {
+      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'Wrong passphrase for that vault file.' })
+      return
+    }
+
+    try {
+      if (session) {
+        const otherClaims = other.listClaims()
+        let added = 0
+        for (const claim of otherClaims) {
+          const before = session.vault.listClaims().length
+          session.vault.importClaim(claim)
+          if (session.vault.listClaims().length > before) added++
+        }
+        await saveVaultBlob(await session.vault.seal())
+        sendResponse({ type: 'MERGE_RESULT', ok: true, added })
+      } else {
+        // Locked: only fill an empty browser slot — never overwrite an existing vault.
+        const existing = await chrome.storage.local.get('vault')
+        if (existing['vault']) {
+          sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'A browser vault already exists. Unlock it, then import the file to merge.' })
+          return
+        }
+        await chrome.storage.local.set({ vault: blob })
+        _selectedVaultSource = 'local'
+        sendResponse({ type: 'IMPORT_FILE_RESULT', ok: true })
+      }
+    } catch (err) {
+      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: String(err) })
+    } finally {
+      other.lock().catch(() => { /* best effort */ })
     }
     return
   }
