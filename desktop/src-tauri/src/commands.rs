@@ -53,17 +53,32 @@ fn storage_config_path() -> Result<PathBuf, String> {
 /// (same codes as `VaultStorageErrorCode` in src/storage.ts).
 fn external_io_error(path: &std::path::Path, err: &std::io::Error) -> String {
     use std::io::ErrorKind;
+    let missing_parent = || path.parent().map(|p| !p.as_os_str().is_empty() && !p.exists()).unwrap_or(false);
+    let os = err.raw_os_error();
     let code = match err.kind() {
-        ErrorKind::NotFound => {
-            // Missing parent mount (unplugged drive) vs. just a missing file.
-            let parent_missing = path.parent().map(|p| !p.as_os_str().is_empty() && !p.exists()).unwrap_or(false);
-            if parent_missing { "DRIVE_MISSING" } else { "NOT_FOUND" }
-        }
+        ErrorKind::NotFound => if missing_parent() { "DRIVE_MISSING" } else { "NOT_FOUND" },
         ErrorKind::PermissionDenied => "PERMISSION_DENIED",
-        _ if err.raw_os_error() == Some(28) => "DRIVE_FULL", // ENOSPC
-        _ => "IO",
+        _ => match os {
+            Some(28) => "DRIVE_FULL",                                  // ENOSPC
+            Some(n) if is_quota_errno(n) => "DRIVE_FULL",              // EDQUOT
+            Some(30) => "PERMISSION_DENIED",                           // EROFS
+            // ENOTDIR / ENODEV: part of the path is gone or not a directory.
+            Some(19) | Some(20) => if missing_parent() { "DRIVE_MISSING" } else { "NOT_FOUND" },
+            // EIO / ENXIO / ENOTCONN / ETIMEDOUT / ESTALE: drive yanked or mount dead.
+            Some(5) | Some(6) => "DRIVE_MISSING",
+            Some(n) if is_dead_mount_errno(n) => "DRIVE_MISSING",
+            _ => "IO",
+        },
     };
     format!("{code}: {err}")
+}
+
+fn is_quota_errno(n: i32) -> bool {
+    if cfg!(target_os = "macos") { n == 69 } else { n == 122 }
+}
+
+fn is_dead_mount_errno(n: i32) -> bool {
+    if cfg!(target_os = "macos") { matches!(n, 57 | 60 | 70) } else { matches!(n, 107 | 110 | 116) }
 }
 
 /// Return the configured external storage path, or null if none is set.
@@ -109,26 +124,58 @@ pub fn read_external_vault(path: String) -> Result<String, String> {
 /// Atomically write the vault blob to the external storage path (tmp + rename).
 /// Resolves symlinks first so a link into a cloud folder is written through, and
 /// refuses to create missing parent directories (an unplugged drive must not be
-/// papered over with a local folder).
+/// papered over with a local folder). A dangling symlink is followed to its
+/// missing target; if that target's directory is gone the drive is missing.
 #[tauri::command]
 pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
     let requested = std::path::Path::new(&path);
     let target = match fs::canonicalize(requested) {
         Ok(p) => p,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let parent = requested.parent().ok_or_else(|| "NOT_CONFIGURED: invalid path".to_string())?;
-            let real_parent = fs::canonicalize(parent).map_err(|e| external_io_error(requested, &e))?;
-            real_parent.join(requested.file_name().ok_or_else(|| "NOT_CONFIGURED: invalid path".to_string())?)
+            // Follow the whole link chain (if any) to its final, missing target.
+            let mut cur = requested.to_path_buf();
+            for _ in 0..40 {
+                match fs::symlink_metadata(&cur) {
+                    Ok(m) if m.file_type().is_symlink() => {
+                        let link = fs::read_link(&cur).map_err(|e| external_io_error(&cur, &e))?;
+                        cur = match cur.parent() {
+                            Some(dir) => dir.join(link),
+                            None => link,
+                        };
+                    }
+                    _ => break,
+                }
+            }
+            let parent = cur.parent().ok_or_else(|| "NOT_CONFIGURED: invalid path".to_string())?;
+            let real_parent = fs::canonicalize(parent).map_err(|e| external_io_error(&cur, &e))?;
+            real_parent.join(cur.file_name().ok_or_else(|| "NOT_CONFIGURED: invalid path".to_string())?)
         }
         Err(e) => return Err(external_io_error(requested, &e)),
     };
-    let mut tmp_name = target.file_name().unwrap_or_default().to_os_string();
-    tmp_name.push(".tmp");
+    // Unique tmp name, created exclusively (never follows a planted file/symlink), owner-only.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut tmp_name = std::ffi::OsString::from(".");
+    tmp_name.push(target.file_name().unwrap_or_default());
+    tmp_name.push(format!(".{}.{}.tmp", std::process::id(), nanos));
     let tmp_path = target.with_file_name(tmp_name);
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
     {
-        let mut file = fs::File::create(&tmp_path).map_err(|e| external_io_error(&target, &e))?;
-        file.write_all(blob.as_bytes()).map_err(|e| external_io_error(&target, &e))?;
-        file.sync_all().map_err(|e| external_io_error(&target, &e))?;
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let write_tmp = || -> std::io::Result<()> {
+        let mut file = opts.open(&tmp_path)?;
+        file.write_all(blob.as_bytes())?;
+        file.sync_all()
+    };
+    if let Err(e) = write_tmp() {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(external_io_error(&target, &e));
     }
     fs::rename(&tmp_path, &target).map_err(|e| {
         let _ = fs::remove_file(&tmp_path);

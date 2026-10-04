@@ -5,7 +5,7 @@ import type { PersistedVault } from '@vault/vault'
 import { generateMnemonicBundle, restoreFromMnemonic } from '@vault/recovery'
 import { generateDID } from '@vault/did'
 import {
-  readVaultFileSynced, writeVaultFile, listVaultFiles, setActiveVaultName, vaultFileExists,
+  readVaultFileSynced, adoptStorageCopy, writeVaultFile, listVaultFiles, setActiveVaultName, vaultFileExists,
 } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
 
@@ -133,9 +133,11 @@ export default function Unlock({ onUnlocked }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const persisted = await readVaultFileSynced()
+      const { persisted, fromStorage } = await readVaultFileSynced()
       if (!persisted) throw new Error('No vault file found. Create a new vault instead.')
       const vault = await VaultClass.open(persisted, passphrase)
+      // Only replace the local file once the passphrase has verified the storage copy.
+      if (fromStorage) await adoptStorageCopy(persisted)
       if (mnemonic.trim()) {
         const bundle = await restoreFromMnemonic(mnemonic)
         if (!bundle) throw new Error('Invalid recovery phrase.')

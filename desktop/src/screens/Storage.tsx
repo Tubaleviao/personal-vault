@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import type { Vault } from '@vault/vault'
 import {
   getStoragePath, setStoragePath, readStorageVault, getLastSyncError, compareCopies,
-  readVaultFile, writeVaultFile, StorageError, STORAGE_MESSAGES,
+  readVaultFile, forceMirrorToStorage, StorageError, STORAGE_MESSAGES,
 } from '../tauriVault'
 
 interface Props {
@@ -23,10 +23,11 @@ export default function Storage({ vault }: Props) {
   const [syncError, setSyncError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
-    const p = await getStoragePath().catch(() => null)
+    let cfgError: string | null = null
+    const p = await getStoragePath().catch((err: unknown) => { cfgError = describe(err); return null })
     setSaved(p)
     setInput(p ?? '')
-    setSyncError(getLastSyncError()?.message ?? null)
+    setSyncError(cfgError ?? getLastSyncError()?.message ?? null)
   }, [])
 
   useEffect(() => { void refresh() }, [refresh])
@@ -52,8 +53,11 @@ export default function Storage({ vault }: Props) {
       const remote = await readStorageVault(input.trim() || null)
       const local = await readVaultFile()
       const newer = compareCopies(local, remote)
+      if (local && local.header.ownerId !== remote.header.ownerId) throw new StorageError('OWNER_MISMATCH')
       const msg = newer === 'same'
         ? `Storage copy is up to date (sequence ${remote.header.sequenceNumber ?? 0}).`
+        : newer === 'conflict'
+          ? 'Storage copy and local copy have diverged (same sequence, different content). Neither will be overwritten automatically.'
         : newer === 'remote'
           ? `Storage copy is newer (sequence ${remote.header.sequenceNumber ?? 0} vs local ${local?.header.sequenceNumber ?? 0}). It will be used next time you unlock.`
           : `Local copy is newer (sequence ${local?.header.sequenceNumber ?? 0} vs storage ${remote.header.sequenceNumber ?? 0}). It will be written to storage on the next save.`
@@ -72,7 +76,21 @@ export default function Storage({ vault }: Props) {
     try {
       const local = await readVaultFile()
       if (!local) throw new Error('No local vault file.')
-      await writeVaultFile(local)
+      // Overwriting is destructive: confirm unless storage is empty, older, or already identical.
+      const remote = await readStorageVault().catch(() => null)
+      if (remote) {
+        const sameOwner = remote.header.ownerId === local.header.ownerId
+        if (!sameOwner || compareCopies(local, remote) !== 'local') {
+          const why = !sameOwner
+            ? 'The storage file belongs to a DIFFERENT vault.'
+            : 'The storage copy is newer than or has diverged from the local copy.'
+          if (!window.confirm(`${why} Overwrite it with the local copy? This cannot be undone.`)) {
+            setStatus({ ok: false, msg: 'Cancelled; storage copy left untouched.' })
+            return
+          }
+        }
+      }
+      await forceMirrorToStorage(local)
       await refresh()
       const err = getLastSyncError()
       setStatus(err ? { ok: false, msg: err.message } : { ok: true, msg: 'Storage updated from local copy.' })
