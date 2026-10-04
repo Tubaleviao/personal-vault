@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseVCard, countVCards } from '../src/import-vcard'
+import { parseVCard, countVCards, listVCards } from '../src/import-vcard'
 
 const byType = (t: string) => (cs: { type: string; value: string }[]) => cs.find(c => c.type === t)?.value
 
@@ -83,4 +83,33 @@ test('vcard: card without END:VCARD still parses', () => {
 
 test('vcard: throws when no card present', () => {
   assert.throws(() => parseVCard('hello'), /Not a vCard/)
+})
+
+test('vcard: unterminated card followed by another still counts as two', () => {
+  const text = 'BEGIN:VCARD\nFN:A\nBEGIN:VCARD\nFN:B\nEND:VCARD'
+  assert.equal(countVCards(text), 2)
+  assert.throws(() => parseVCard(text), /2 cards/)
+  assert.deepEqual(listVCards(text), [{ index: 0, name: 'A' }, { index: 1, name: 'B' }])
+})
+
+test('vcard: empty cards ignored', () => {
+  assert.equal(countVCards('BEGIN:VCARD\nEND:VCARD\nBEGIN:VCARD\nFN:A\nEND:VCARD'), 1)
+})
+
+test('vcard: empty tel: does not hide a valid TEL; escaped ; kept', () => {
+  assert.equal(byType('schema:telephone')(parseVCard('BEGIN:VCARD\nTEL:tel:\nTEL:+1 555\nEND:VCARD')), '+1 555')
+  assert.equal(byType('schema:telephone')(parseVCard('BEGIN:VCARD\nTEL:555\\;12\nEND:VCARD')), '555;12')
+})
+
+test('vcard: quoted TYPE list with pref, PREF address beats street-only one', () => {
+  const r = parseVCard('BEGIN:VCARD\nEMAIL;TYPE=home:b@x.co\nEMAIL;TYPE="work,pref":a@x.co\nADR;PREF=1:;;;SP;SP;;BR\nADR:;;Rua B;Rio;RJ;1;BR\nEND:VCARD')
+  assert.equal(byType('schema:email')(r), 'a@x.co')
+  assert.equal(byType('schema:addressLocality')(r), 'SP')
+})
+
+test('vcard: QP encoded separators stay data; non-BMP survives', () => {
+  const r = parseVCard('BEGIN:VCARD\nN;ENCODING=QUOTED-PRINTABLE:Silva=3BJr;Ana\nFN;ENCODING=QUOTED-PRINTABLE:A 😀\nEND:VCARD')
+  assert.equal(byType('schema:familyName')(r), 'Silva;Jr')
+  assert.equal(byType('schema:givenName')(r), 'Ana')
+  assert.equal(byType('schema:name')(r), 'A 😀')
 })

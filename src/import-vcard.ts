@@ -46,12 +46,22 @@ function splitParams(s: string): string[] {
 
 function decodeQuotedPrintable(v: string, charset: string): string {
   const bytes: number[] = []
+  const enc = new TextEncoder()
   for (let i = 0; i < v.length; i++) {
-    if (v[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(v.slice(i + 1, i + 3))) { bytes.push(parseInt(v.slice(i + 1, i + 3), 16)); i += 2 }
-    else bytes.push(...Buffer.from(v[i], 'utf8'))
+    if (v[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(v.slice(i + 1, i + 3))) {
+      const b = parseInt(v.slice(i + 1, i + 3), 16)
+      // An encoded structural char is data, not a separator: keep it escaped for later splitting.
+      if (b === 0x3b || b === 0x2c || b === 0x5c) bytes.push(0x5c)
+      bytes.push(b)
+      i += 2
+    } else {
+      const cp = v.codePointAt(i)!
+      bytes.push(...enc.encode(String.fromCodePoint(cp)))
+      if (cp > 0xffff) i++
+    }
   }
-  const enc = /^(iso-8859-1|latin1|windows-1252)$/i.test(charset) ? 'latin1' : 'utf8'
-  return Buffer.from(bytes).toString(enc)
+  const label = /^(iso-8859-1|latin1|windows-1252)$/i.test(charset) ? 'windows-1252' : 'utf-8'
+  return new TextDecoder(label).decode(Uint8Array.from(bytes))
 }
 
 function normaliseBirthDate(v: string): string | null {
@@ -66,9 +76,9 @@ function normaliseBirthDate(v: string): string | null {
 function prefRank(params: string[]): number {
   let rank = Infinity
   for (const p of params) {
-    const [k, v = ''] = p.split('=')
+    const [k, v = ''] = p.replace(/"/g, '').split('=')
     const key = k.trim().toUpperCase()
-    if (key === 'PREF' && v) rank = Math.min(rank, Number(v.replace(/"/g, '')) || 1)
+    if (key === 'PREF' && v) rank = Math.min(rank, Number(v) || 1)
     else if (key === 'PREF' || v.toUpperCase().split(',').includes('PREF')) rank = Math.min(rank, 1)
   }
   return rank
@@ -89,12 +99,23 @@ function splitCards(text: string): string[][] {
   const cards: string[][] = []
   let cur: string[] | null = null
   for (const l of unfolded) {
-    if (/^BEGIN:VCARD\s*$/i.test(l)) cur = []
+    if (/^BEGIN:VCARD\s*$/i.test(l)) { if (cur) cards.push(cur); cur = [] } // a new BEGIN closes an unterminated card
     else if (/^END:VCARD\s*$/i.test(l)) { if (cur) cards.push(cur); cur = null }
     else if (cur) cur.push(l)
   }
   if (cur) cards.push(cur) // missing END:VCARD
-  return cards
+  return cards.filter(c => c.some(l => l.trim() !== ''))
+}
+
+/** Display name (FN, else N) of each card, in order, so a caller can offer a choice. */
+export function listVCards(text: string): { index: number; name: string }[] {
+  return splitCards(text).map((lines, index) => {
+    const props = parseProps(lines)
+    const fn = unescapeValue(pick(props, 'FN')?.value ?? '').trim()
+    const n = pick(props, 'N', p => splitStructured(p.value).slice(0, 2).some(Boolean))
+    const [family = '', given = ''] = n ? splitStructured(n.value) : []
+    return { index, name: fn || `${given} ${family}`.trim() }
+  })
 }
 
 /** Number of cards in `text`. A Google Takeout "All Contacts.vcf" holds the whole address book. */
@@ -161,16 +182,19 @@ export function parseVCard(text: string, opts: { card?: number } = {}): Imported
   }
   add('schema:name', unescapeValue(pick(props, 'FN')?.value ?? ''))
   add('schema:email', unescapeValue(pick(props, 'EMAIL')?.value ?? ''))
-  const tel = pick(props, 'TEL')
   // vCard 4.0 may use a tel: URI, possibly with ;ext= / ;phone-context= parameters.
-  add('schema:telephone', unescapeValue(tel?.value ?? '').replace(/^tel:/i, '').split(';')[0])
+  const telValue = (p: Prop) => (/^tel:/i.test(p.value.trim()) ? p.value.trim().slice(4).split(';')[0] : unescapeValue(p.value)).trim()
+  const tel = pick(props, 'TEL', p => telValue(p) !== '')
+  add('schema:telephone', tel ? telValue(tel) : undefined)
   const bday = pick(props, 'BDAY', p => normaliseBirthDate(p.value) !== null)
   add('schema:birthDate', bday ? normaliseBirthDate(bday.value) ?? undefined : undefined)
   add('schema:jobTitle', unescapeValue(pick(props, 'TITLE')?.value ?? ''))
   const org = pick(props, 'ORG', p => !!splitStructured(p.value)[0])
   add('schema:worksFor', org ? splitStructured(org.value)[0] : undefined)
   // pobox;ext;street;locality;region;postcode;country. Prefer an ADR with a street, then use it whole.
-  const adr = pick(props, 'ADR', p => !!splitStructured(p.value)[2]) ?? pick(props, 'ADR', p => splitStructured(p.value).some(Boolean))
+  const anyAdr = pick(props, 'ADR', p => splitStructured(p.value).some(Boolean))
+  // An explicit PREF wins outright; otherwise prefer an ADR with a street.
+  const adr = anyAdr && anyAdr.rank < Infinity ? anyAdr : pick(props, 'ADR', p => !!splitStructured(p.value)[2]) ?? anyAdr
   if (adr) {
     const f = splitStructured(adr.value)
     add('schema:streetAddress', f[2])
