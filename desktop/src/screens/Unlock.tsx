@@ -139,13 +139,18 @@ export default function Unlock({ onUnlocked }: Props) {
       let vault
       try {
         vault = await VaultClass.open(persisted, passphrase)
-        // Only replace the local file once the passphrase has verified the storage copy.
-        if (synced.fromStorage) await adoptStorageCopy(persisted)
       } catch (openErr) {
         // A storage copy that cannot be opened must not lock out a good local copy.
         if (!synced.fromStorage || !synced.local) throw openErr
         persisted = synced.local
         vault = await VaultClass.open(persisted, passphrase)
+      }
+      // Only replace the local file once the passphrase has verified the storage copy.
+      // The vault is already open, so a failed write must not fall back to the stale copy.
+      if (synced.fromStorage && persisted === synced.persisted) {
+        try { await adoptStorageCopy(persisted) } catch (adoptErr) {
+          setError(`Unlocked from storage copy, but could not update the local file: ${adoptErr instanceof Error ? adoptErr.message : String(adoptErr)}`)
+        }
       }
       if (mnemonic.trim()) {
         const bundle = await restoreFromMnemonic(mnemonic)

@@ -8,6 +8,7 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import type { PersistedVault } from '@vault/vault'
+import { isPersistedVault } from '@vault/vault-file'
 
 let _activeVaultName = 'vault.json'
 
@@ -88,29 +89,11 @@ export async function getStoragePath(): Promise<string | null> {
 export async function setStoragePath(path: string | null): Promise<void> {
   try {
     await invoke<void>('set_storage_path', { path })
+    // The sync base describes the previous location's shared history; drop it.
+    try { localStorage.removeItem(baseKey()) } catch { /* storage unavailable */ }
   } catch (err) {
     throw toStorageError(err)
   }
-}
-
-const SCRYPT_N_MIN = 16384
-const SCRYPT_N_MAX = 2 ** 20 // keep in sync with SCRYPT_N_MAX in src/crypto.ts
-
-/** Shape check for a sealed vault; mirrors isPersistedVault in src/storage.ts. */
-function looksLikeVault(o: unknown): o is PersistedVault {
-  const v = o as PersistedVault | null
-  if (!v || typeof v !== 'object' || !v.header || typeof v.header !== 'object') return false
-  const h = v.header
-  const n = h.scryptN
-  return typeof h.ownerId === 'string'
-    && typeof h.salt === 'string'
-    && typeof h.keyVerificationHash === 'string'
-    && (h.sequenceNumber === undefined || (Number.isInteger(h.sequenceNumber) && h.sequenceNumber >= 0))
-    && (n === undefined
-      || (Number.isInteger(n) && n >= SCRYPT_N_MIN && n <= SCRYPT_N_MAX && (n & (n - 1)) === 0))
-    && !!v.encrypted && typeof v.encrypted === 'object'
-    && typeof v.encrypted.nonce === 'string'
-    && typeof v.encrypted.ciphertext === 'string'
 }
 
 /** Read and validate the vault at the configured storage path. Throws StorageError. */
@@ -125,7 +108,7 @@ export async function readStorageVault(path?: string | null): Promise<PersistedV
   }
   let parsed: unknown
   try { parsed = JSON.parse(raw) } catch { throw new StorageError('CORRUPT') }
-  if (!looksLikeVault(parsed)) throw new StorageError('CORRUPT')
+  if (!isPersistedVault(parsed)) throw new StorageError('CORRUPT')
   return parsed
 }
 
@@ -168,14 +151,14 @@ export function compareCopies(
     const localChanged = local.encrypted.nonce !== base
     const remoteChanged = remote.encrypted.nonce !== base
     if (localChanged && remoteChanged) return 'conflict'
-    if (remoteChanged) return 'remote'
-    if (localChanged) return 'local'
+    // A side that changed since the base but has a LOWER sequence number than the other
+    // is a rolled-back/foreign copy, not a newer one: never let it overwrite.
+    if (remoteChanged) return seqOf(remote) >= seqOf(local) ? 'remote' : 'conflict'
+    if (localChanged) return seqOf(local) >= seqOf(remote) ? 'local' : 'conflict'
   }
   const a = seqOf(local), b = seqOf(remote)
   if (a !== b) return a > b ? 'local' : 'remote'
-  return local.encrypted.ciphertext === remote.encrypted.ciphertext
-    && local.encrypted.nonce === remote.encrypted.nonce
-    ? 'same' : 'conflict'
+  return 'conflict'
 }
 
 /**
@@ -249,6 +232,8 @@ export async function readVaultFileSynced(): Promise<SyncedRead> {
     // A file that doesn't exist yet is normal on first sync; seed it below.
     _lastSyncError = e.code === 'NOT_FOUND' && local ? null : e
     if (e.code !== 'NOT_FOUND' && !local) throw e
+    // Don't hit a dead mount a second time via the mirror.
+    if (e.code !== 'NOT_FOUND') return { persisted: local, local, fromStorage: false }
   }
   if (local && remote && local.header.ownerId !== remote.header.ownerId) {
     _lastSyncError = new StorageError('OWNER_MISMATCH')

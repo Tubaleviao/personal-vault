@@ -82,6 +82,10 @@ The key difference: password managers store and replay credentials on your behal
 - Works fully offline: the OS keeps a local copy and queues uploads when connectivity returns
 - Flash drive support for air-gapped setups; clear error messages when the drive is not attached
 
+*Setup (desktop app):* open the Storage screen, type the full path of the vault file inside your synced folder or drive (e.g. `~/Dropbox/vault.json`), and use **Test read** to verify it. Every save writes to the local copy and to that path (atomic `.tmp` + rename); on startup the app loads the storage copy if the local one is missing or older. If the drive is unplugged, a non-blocking banner appears and the vault opens from the local copy.
+
+*Setup (extension only, no desktop app):* use the popup's vault file import button — unlocked vaults merge the file, locked ones restore it into an empty browser slot.
+
 ---
 
 ## Installation
@@ -253,13 +257,13 @@ Once loaded:
 | Consent & grant layer (create, validate, revoke) | ✅ Done |
 | Browser extension (auto-fill with per-site approval) | ✅ Done |
 | Browser extension — credential capture (password manager) | ✅ Done |
-| Cross-device sync via cloud storage / flash drive | 🔜 Next |
+| Cross-device sync via cloud storage / flash drive | ✅ Done |
 | Desktop app (Tauri — Windows / macOS / Linux) | ✅ Done |
 | Full SD-JWT spec conformance (`issueSDJWT` / `verifySDJWT`) | ✅ Done |
 | VC proof verification in `importVC()` (Ed25519Signature2020) | ✅ Done |
 | scrypt N upgrade to 2^16 for new vaults | ✅ Done |
 | STRIDE threat model document | ✅ Done |
-| Cloud storage sync (replaces relay) | 🔜 Next |
+| Cloud storage sync (replaces relay) | ✅ Done |
 | Vault discovery & multi-vault picker | 🔜 Planned |
 | Chrome Web Store publishing | 🔜 Planned |
 | External cryptography review | 🔜 Planned |

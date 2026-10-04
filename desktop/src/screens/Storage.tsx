@@ -50,7 +50,7 @@ export default function Storage({ vault }: Props) {
     setBusy(true)
     setStatus(null)
     try {
-      const remote = await readStorageVault(input.trim() || null)
+      const remote = await readStorageVault(saved)
       const local = await readVaultFile()
       const newer = compareCopies(local, remote, getSyncBase())
       if (local && local.header.ownerId !== remote.header.ownerId) throw new StorageError('OWNER_MISMATCH')
@@ -133,7 +133,7 @@ export default function Storage({ vault }: Props) {
       />
       <div style={styles.row}>
         <button style={styles.btn} disabled={busy} onClick={() => { void handleSave() }}>Save</button>
-        <button style={styles.btn} disabled={busy || !input.trim()} onClick={() => { void handleTestRead() }}>
+        <button style={styles.btn} disabled={busy || !saved || input.trim() !== saved} title="Save the path first" onClick={() => { void handleTestRead() }}>
           Test read
         </button>
         <button style={styles.btn} disabled={busy || !saved} onClick={() => { void handleUseLocal() }}>

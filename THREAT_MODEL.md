@@ -77,9 +77,9 @@
 
 | Threat | Where | Mitigation | Status |
 |--------|-------|------------|--------|
-| Sync folder fills up (flash drive full) | Sync folder | `writeVaultFile` checks available space before writing; surfaces `DRIVE_FULL` error with clear message | 🔜 Planned (Phase 3.5.2) |
+| Sync folder fills up (flash drive full) | Sync folder | `writeVaultFile` writes to a `.tmp` file then renames, so a failed write never corrupts the existing vault; `ENOSPC`/`EDQUOT` surface as a `DRIVE_FULL` error with a clear message | ✅ Implemented |
 | Slow scrypt exhausts CPU on open | Client | `scryptN` comes from `VaultHeader`; `Vault.open` and `deriveKey` enforce `SCRYPT_N_MIN` (16384) ≤ N ≤ `SCRYPT_N_MAX` (2^20), rejecting crafted headers before any allocation | ✅ Implemented |
-| Attacker sets `scryptN: 1` in relay-stored header to weaken KDF | Relay / Client | `Vault.open` checks `N >= SCRYPT_N_MIN` and throws before calling `deriveKey`; `deriveKey` independently validates the range | ✅ Implemented |
+| Attacker sets `scryptN: 1` in a tampered vault file header (cloud folder / flash drive) to weaken KDF | Sync folder / Client | `Vault.open` checks `N >= SCRYPT_N_MIN` and throws before calling `deriveKey`; `deriveKey` independently validates the range | ✅ Implemented |
 
 ### E — Elevation of Privilege
 
@@ -88,7 +88,6 @@
 | Malicious web page extracts fill data via content script | Extension | Content script holds no vault state; background worker sends fill values only after site approval | ✅ Implemented |
 | Rogue extension gains vault access | Extension | Vault unlocked only in background service worker; popup and content scripts send typed messages, never receive raw claims | ✅ Implemented |
 | Expired/revoked grant re-used by grantee | Consent | `validateGrant()` checks `status`, `expiresAt`, and `ownerSig` before serving any data | ✅ Implemented |
-| Attacker replays a captured challenge signature | Relay | Nonces are single-use; relay deletes nonce on first use | ✅ Implemented |
 
 ---
 
@@ -99,6 +98,8 @@
 | VC proof not verified in `importVC()` | ~~Medium~~ | **Resolved.** `verifyVCProof()` verifies Ed25519Signature2020 proofs using the W3C VC Data Model signing input (SHA-256 of proof options + SHA-256 of document). Claims from unverified VCs get `verification: 'none'`. Limitation: full RDFC-1.0 JSON-LD canonicalization is not implemented; issuers that deviate from sorted-key JSON will produce `'none'`. |
 | SD-JWT is a stub | ~~Medium~~ | **Resolved.** `issueSDJWT()` / `verifySDJWT()` implement the SD-JWT compact format (draft-ietf-oauth-selective-disclosure-jwt): per-claim salted disclosures, SHA-256 digests in `_sd`, spec-compliant `~`-separated compact serialisation. `frameSDJWT()` is deprecated but preserved for backwards compatibility. |
 | Cloud provider sync conflict (two devices write simultaneously) | Low | `VaultHeader.sequenceNumber` is compared on open; the lower-sequence copy is flagged. The desktop app surfaces a "conflict detected" dialog offering to keep local or cloud copy. Full three-way merge is not planned — single-user append-only model makes it rare. |
+| Flash drive lost or stolen | Low | The file is XChaCha20-Poly1305 ciphertext under a scrypt-derived key; an attacker must brute-force the passphrase offline (see scope notes below). Use a strong passphrase and keep the BIP-39 recovery phrase off the drive. |
+| Stale or rolled-back vault copy served by the cloud provider or an old drive | Low | `sequenceNumber` is compared on open and a lower-sequence copy is flagged. Rollback is detectable only when a newer copy has been seen on this device. |
 | scrypt N stored in VaultHeader (client-controlled) | Low | ~~Mitigated~~: `Vault.open()` enforces `scryptN >= SCRYPT_N_MIN` (16384) and `<= SCRYPT_N_MAX` (2^20) before calling `deriveKey`; `deriveKey` independently validates the range. Crafted headers outside this band are rejected before any memory allocation. |
 | No external cryptographic audit | High | All crypto primitives are off-the-shelf (libsodium, Node built-ins), but the protocol composition (key derivation, grant signing, bundle format) has not been reviewed by an independent cryptographer. Plan: fund via NLnet/NGI grant before public launch. |
 

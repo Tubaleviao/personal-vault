@@ -32,7 +32,7 @@ All steps below are implemented. Modules are in `src/` and `extension/`.
 
 ---
 
-## Phase 3.5.2 — Cloud Storage Sync (replaces relay) — Next
+## Phase 3.5.2 — Cloud Storage Sync (replaces relay) ✅
 
 The Cloudflare Worker relay is being removed. Sync will instead write the encrypted vault file directly to a user-controlled cloud storage folder (iCloud Drive, Dropbox, Google Drive, or a flash drive). The vault is already fully encrypted — the cloud provider sees only opaque bytes.
 
@@ -85,9 +85,9 @@ The Cloudflare Worker relay is being removed. Sync will instead write the encryp
 - [x] Desktop: replace Sync screen with Storage screen — path input, test-read button, error states (`desktop/src/screens/Storage.tsx`; native file-dialog picker deferred — path is typed)
 - [x] Desktop: write to storage path on every vault seal; read from it on startup when local copy absent/older (`tauriVault.ts` `writeVaultFile` / `readVaultFileSynced`)
 - [x] Extension: remove relay URL input from popup; add vault file import button for the no-desktop-app fallback (`IMPORT_VAULT_FILE`; unlocked → merge, locked → restore into empty browser slot; `src/vault-file.ts`)
-- [ ] Update `CLAUDE.md` module map and invariants
-- [ ] Update `THREAT_MODEL.md` — remove relay threat surface, add cloud provider and flash drive threat entries
-- [ ] Update `README.md` — remove relay setup instructions, document cloud storage setup
+- [x] Update `CLAUDE.md` module map and invariants
+- [x] Update `THREAT_MODEL.md` — remove relay threat surface, add cloud provider and flash drive threat entries
+- [x] Update `README.md` — remove relay setup instructions, document cloud storage setup
 
 ---
 
