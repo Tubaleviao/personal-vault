@@ -1,6 +1,8 @@
 // Import of a vCard (.vcf, as in Google Takeout Contacts / Apple Contacts "my card") into claim data.
-// Pure functions: no fs, no vault access. Only the first card is read; mixing cards would combine different people.
-import type { ImportedAutofillClaim } from './import'
+// Pure functions: no fs, no vault access. One card is read per call; mixing cards would combine different people.
+import { makeImportedClaim, type ImportedAutofillClaim } from './import'
+
+interface Prop { name: string; params: string[]; value: string; rank: number }
 
 function unescapeValue(v: string): string {
   return v.replace(/\\([nN,;\\])/g, (_, c: string) => (c === 'n' || c === 'N' ? '\n' : c))
@@ -19,60 +21,163 @@ function splitStructured(v: string): string[] {
   return parts.map(p => unescapeValue(p).trim())
 }
 
+/** Index of the first `sep` outside double quotes, or -1. */
+function indexOutsideQuotes(s: string, sep: string): number {
+  let q = false
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '"') q = !q
+    else if (s[i] === sep && !q) return i
+  }
+  return -1
+}
+
+function splitParams(s: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let q = false
+  for (const ch of s) {
+    if (ch === '"') { q = !q; cur += ch }
+    else if (ch === ';' && !q) { out.push(cur); cur = '' }
+    else cur += ch
+  }
+  out.push(cur)
+  return out
+}
+
+function decodeQuotedPrintable(v: string, charset: string): string {
+  const bytes: number[] = []
+  for (let i = 0; i < v.length; i++) {
+    if (v[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(v.slice(i + 1, i + 3))) { bytes.push(parseInt(v.slice(i + 1, i + 3), 16)); i += 2 }
+    else bytes.push(...Buffer.from(v[i], 'utf8'))
+  }
+  const enc = /^(iso-8859-1|latin1|windows-1252)$/i.test(charset) ? 'latin1' : 'utf8'
+  return Buffer.from(bytes).toString(enc)
+}
+
 function normaliseBirthDate(v: string): string | null {
-  const m = /^(\d{4})-?(\d{2})-?(\d{2})(?:T.*)?$/.exec(v.trim())
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+  const m = /^(\d{4})(-?)(\d{2})\2(\d{2})(?:T.*)?$/.exec(v.trim())
+  if (!m) return null
+  const [y, mo, d] = [Number(m[1]), Number(m[3]), Number(m[4])]
+  // 1604 is Apple's placeholder year for birthdays without a year.
+  if (y === 1604 || mo < 1 || mo > 12 || d < 1 || d > new Date(Date.UTC(y, mo, 0)).getUTCDate()) return null
+  return `${m[1]}-${m[3]}-${m[4]}`
+}
+
+function prefRank(params: string[]): number {
+  let rank = Infinity
+  for (const p of params) {
+    const [k, v = ''] = p.split('=')
+    const key = k.trim().toUpperCase()
+    if (key === 'PREF' && v) rank = Math.min(rank, Number(v.replace(/"/g, '')) || 1)
+    else if (key === 'PREF' || v.toUpperCase().split(',').includes('PREF')) rank = Math.min(rank, 1)
+  }
+  return rank
+}
+
+function splitCards(text: string): string[][] {
+  const lines = text.replace(/^﻿/, '').replace(/\r\n|\r/g, '\n').split('\n')
+  // Join quoted-printable soft line breaks (trailing "=") before general unfolding.
+  const joined: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    let l = lines[i]
+    if (/^[^:]*;\s*ENCODING=QUOTED-PRINTABLE/i.test(l) || /^[^:]*;\s*QUOTED-PRINTABLE/i.test(l)) {
+      while (l.endsWith('=') && i + 1 < lines.length) l = l.slice(0, -1) + lines[++i]
+    }
+    joined.push(l)
+  }
+  const unfolded = joined.join('\n').replace(/\n[ \t]/g, '').split('\n')
+  const cards: string[][] = []
+  let cur: string[] | null = null
+  for (const l of unfolded) {
+    if (/^BEGIN:VCARD\s*$/i.test(l)) cur = []
+    else if (/^END:VCARD\s*$/i.test(l)) { if (cur) cards.push(cur); cur = null }
+    else if (cur) cur.push(l)
+  }
+  if (cur) cards.push(cur) // missing END:VCARD
+  return cards
+}
+
+/** Number of cards in `text`. A Google Takeout "All Contacts.vcf" holds the whole address book. */
+export function countVCards(text: string): number {
+  return splitCards(text).length
+}
+
+function parseProps(lines: string[]): Prop[] {
+  const props: Prop[] = []
+  for (const line of lines) {
+    const colon = indexOutsideQuotes(line, ':')
+    if (colon < 0) continue
+    const [head, ...rest] = splitParams(line.slice(0, colon))
+    const params = rest.map(p => p.trim())
+    // Strip group prefix ("item1.EMAIL").
+    const name = head.replace(/^[^.]*\./, '').toUpperCase()
+    let value = line.slice(colon + 1)
+    if (params.some(p => /^(ENCODING=)?QUOTED-PRINTABLE$/i.test(p))) {
+      const cs = params.find(p => /^CHARSET=/i.test(p))?.slice(8) ?? 'utf-8'
+      value = decodeQuotedPrintable(value, cs)
+    }
+    props.push({ name, params, value, rank: prefRank(params) })
+  }
+  return props
+}
+
+/** Preferred (lowest PREF rank, else first) property with a non-empty mapped value. */
+function pick(props: Prop[], name: string, nonEmpty: (p: Prop) => boolean = p => p.value.trim() !== ''): Prop | undefined {
+  let best: Prop | undefined
+  for (const p of props) {
+    if (p.name !== name || !nonEmpty(p)) continue
+    if (!best || p.rank < best.rank) best = p
+  }
+  return best
 }
 
 /**
- * Parse the first vCard (2.1 / 3.0 / 4.0) in `text`. Maps N, FN, EMAIL, TEL, BDAY,
- * ADR, TITLE and ORG to claims; first value per claim type wins. Throws if no card found.
+ * Parse one vCard (2.1 / 3.0 / 4.0) in `text`. Maps N, FN, EMAIL, TEL, BDAY, ADR, TITLE
+ * and ORG to claims; the PREF-marked (else first) property wins, and N / ADR are taken
+ * whole from a single property. Throws if no card is found, or if the file holds several
+ * cards and `opts.card` (0-based) does not say which one is the owner's.
  */
-export function parseVCard(text: string): ImportedAutofillClaim[] {
-  const body = text.replace(/^﻿/, '')
-  // Unfold continuation lines (CRLF/LF followed by space or tab).
-  const lines = body.replace(/\r\n|\r/g, '\n').replace(/\n[ \t]/g, '').split('\n')
-  const begin = lines.findIndex(l => /^BEGIN:VCARD\s*$/i.test(l))
-  if (begin < 0) throw new Error('Not a vCard file')
+export function parseVCard(text: string, opts: { card?: number } = {}): ImportedAutofillClaim[] {
+  const cards = splitCards(text)
+  if (cards.length === 0) throw new Error('Not a vCard file')
+  if (opts.card === undefined && cards.length > 1) {
+    throw new Error(`vCard file contains ${cards.length} cards; choose which one is yours`)
+  }
+  const lines = cards[opts.card ?? 0]
+  if (!lines) throw new Error(`No vCard at index ${opts.card}`)
+  const props = parseProps(lines)
 
   const seen = new Map<string, ImportedAutofillClaim>()
   const add = (type: string, raw: string | undefined) => {
     const value = (raw ?? '').trim()
-    if (!value || seen.has(type)) return
-    seen.set(type, { type, value, source: 'imported', verification: 'none', expiresAt: null, issuerDid: null })
+    if (value && !seen.has(type)) seen.set(type, makeImportedClaim(type, value))
   }
 
-  for (const line of lines.slice(begin + 1)) {
-    if (/^END:VCARD\s*$/i.test(line)) break
-    const colon = line.indexOf(':')
-    if (colon < 0) continue
-    // Strip group prefix ("item1.EMAIL") and parameters ("EMAIL;TYPE=work").
-    const name = line.slice(0, colon).split(';')[0].replace(/^[^.]*\./, '').toUpperCase()
-    const value = line.slice(colon + 1)
-    switch (name) {
-      case 'N': {
-        const [family, given] = splitStructured(value)
-        add('schema:familyName', family)
-        add('schema:givenName', given)
-        break
-      }
-      case 'FN': add('schema:name', unescapeValue(value)); break
-      case 'EMAIL': add('schema:email', unescapeValue(value)); break
-      case 'TEL': add('schema:telephone', unescapeValue(value).replace(/^tel:/i, '')); break
-      case 'BDAY': add('schema:birthDate', normaliseBirthDate(value) ?? undefined); break
-      case 'TITLE': add('schema:jobTitle', unescapeValue(value)); break
-      case 'ORG': add('schema:worksFor', splitStructured(value)[0]); break
-      case 'ADR': {
-        // pobox;ext;street;locality;region;postcode;country
-        const f = splitStructured(value)
-        add('schema:streetAddress', f[2])
-        add('schema:addressLocality', f[3])
-        add('schema:addressRegion', f[4])
-        add('schema:postalCode', f[5])
-        add('schema:addressCountry', f[6])
-        break
-      }
-    }
+  const n = pick(props, 'N', p => splitStructured(p.value).slice(0, 2).some(Boolean))
+  if (n) {
+    const [family, given] = splitStructured(n.value)
+    add('schema:familyName', family)
+    add('schema:givenName', given)
+  }
+  add('schema:name', unescapeValue(pick(props, 'FN')?.value ?? ''))
+  add('schema:email', unescapeValue(pick(props, 'EMAIL')?.value ?? ''))
+  const tel = pick(props, 'TEL')
+  // vCard 4.0 may use a tel: URI, possibly with ;ext= / ;phone-context= parameters.
+  add('schema:telephone', unescapeValue(tel?.value ?? '').replace(/^tel:/i, '').split(';')[0])
+  const bday = pick(props, 'BDAY', p => normaliseBirthDate(p.value) !== null)
+  add('schema:birthDate', bday ? normaliseBirthDate(bday.value) ?? undefined : undefined)
+  add('schema:jobTitle', unescapeValue(pick(props, 'TITLE')?.value ?? ''))
+  const org = pick(props, 'ORG', p => !!splitStructured(p.value)[0])
+  add('schema:worksFor', org ? splitStructured(org.value)[0] : undefined)
+  // pobox;ext;street;locality;region;postcode;country. Prefer an ADR with a street, then use it whole.
+  const adr = pick(props, 'ADR', p => !!splitStructured(p.value)[2]) ?? pick(props, 'ADR', p => splitStructured(p.value).some(Boolean))
+  if (adr) {
+    const f = splitStructured(adr.value)
+    add('schema:streetAddress', f[2])
+    add('schema:addressLocality', f[3])
+    add('schema:addressRegion', f[4])
+    add('schema:postalCode', f[5])
+    add('schema:addressCountry', f[6])
   }
   return [...seen.values()]
 }
