@@ -45,6 +45,97 @@ pub fn read_vault_file(name: Option<String>) -> Result<Option<String>, String> {
         .map_err(|e| format!("Failed to read vault: {e}"))
 }
 
+fn storage_config_path() -> Result<PathBuf, String> {
+    Ok(vault_dir()?.join("storage.json"))
+}
+
+/// Map an io error to a `CODE: message` string; the frontend parses the code prefix
+/// (same codes as `VaultStorageErrorCode` in src/storage.ts).
+fn external_io_error(path: &std::path::Path, err: &std::io::Error) -> String {
+    use std::io::ErrorKind;
+    let code = match err.kind() {
+        ErrorKind::NotFound => {
+            // Missing parent mount (unplugged drive) vs. just a missing file.
+            let parent_missing = path.parent().map(|p| !p.as_os_str().is_empty() && !p.exists()).unwrap_or(false);
+            if parent_missing { "DRIVE_MISSING" } else { "NOT_FOUND" }
+        }
+        ErrorKind::PermissionDenied => "PERMISSION_DENIED",
+        _ if err.raw_os_error() == Some(28) => "DRIVE_FULL", // ENOSPC
+        _ => "IO",
+    };
+    format!("{code}: {err}")
+}
+
+/// Return the configured external storage path, or null if none is set.
+#[tauri::command]
+pub fn get_storage_path() -> Result<Option<String>, String> {
+    let cfg = storage_config_path()?;
+    if !cfg.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(&cfg).map_err(|e| format!("Failed to read storage config: {e}"))?;
+    let v: serde_json::Value = serde_json::from_str(&raw).map_err(|e| format!("CORRUPT: {e}"))?;
+    Ok(v.get("path").and_then(|p| p.as_str()).filter(|p| !p.is_empty()).map(String::from))
+}
+
+/// Set (or clear, with null) the external storage path.
+#[tauri::command]
+pub fn set_storage_path(path: Option<String>) -> Result<(), String> {
+    let cfg = storage_config_path()?;
+    match path.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(p) => {
+            if !std::path::Path::new(p).is_absolute() {
+                return Err("NOT_CONFIGURED: storage path must be absolute".to_string());
+            }
+            fs::create_dir_all(vault_dir()?).map_err(|e| format!("Failed to create vault dir: {e}"))?;
+            fs::write(&cfg, serde_json::json!({ "path": p }).to_string())
+                .map_err(|e| format!("Failed to save storage config: {e}"))
+        }
+        None => match fs::remove_file(&cfg) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(format!("Failed to clear storage config: {e}")),
+        },
+    }
+}
+
+/// Read the vault blob at the external storage path. Errors are `CODE: message`.
+#[tauri::command]
+pub fn read_external_vault(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    fs::read_to_string(p).map_err(|e| external_io_error(p, &e))
+}
+
+/// Atomically write the vault blob to the external storage path (tmp + rename).
+/// Resolves symlinks first so a link into a cloud folder is written through, and
+/// refuses to create missing parent directories (an unplugged drive must not be
+/// papered over with a local folder).
+#[tauri::command]
+pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
+    let requested = std::path::Path::new(&path);
+    let target = match fs::canonicalize(requested) {
+        Ok(p) => p,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let parent = requested.parent().ok_or_else(|| "NOT_CONFIGURED: invalid path".to_string())?;
+            let real_parent = fs::canonicalize(parent).map_err(|e| external_io_error(requested, &e))?;
+            real_parent.join(requested.file_name().ok_or_else(|| "NOT_CONFIGURED: invalid path".to_string())?)
+        }
+        Err(e) => return Err(external_io_error(requested, &e)),
+    };
+    let mut tmp_name = target.file_name().unwrap_or_default().to_os_string();
+    tmp_name.push(".tmp");
+    let tmp_path = target.with_file_name(tmp_name);
+    {
+        let mut file = fs::File::create(&tmp_path).map_err(|e| external_io_error(&target, &e))?;
+        file.write_all(blob.as_bytes()).map_err(|e| external_io_error(&target, &e))?;
+        file.sync_all().map_err(|e| external_io_error(&target, &e))?;
+    }
+    fs::rename(&tmp_path, &target).map_err(|e| {
+        let _ = fs::remove_file(&tmp_path);
+        external_io_error(&target, &e)
+    })
+}
+
 /// Write the sealed vault blob to the platform data directory.
 /// Pass `name` to write a specific file; defaults to vault.json.
 /// Creates the directory if it does not exist.

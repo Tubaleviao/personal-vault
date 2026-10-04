@@ -5,7 +5,7 @@ import type { PersistedVault } from '@vault/vault'
 import { generateMnemonicBundle, restoreFromMnemonic } from '@vault/recovery'
 import { generateDID } from '@vault/did'
 import {
-  readVaultFile, writeVaultFile, listVaultFiles, setActiveVaultName, vaultFileExists,
+  readVaultFileSynced, writeVaultFile, listVaultFiles, setActiveVaultName, vaultFileExists,
 } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
 
@@ -133,7 +133,7 @@ export default function Unlock({ onUnlocked }: Props) {
     setBusy(true)
     setError(null)
     try {
-      const persisted = await readVaultFile()
+      const persisted = await readVaultFileSynced()
       if (!persisted) throw new Error('No vault file found. Create a new vault instead.')
       const vault = await VaultClass.open(persisted, passphrase)
       if (mnemonic.trim()) {

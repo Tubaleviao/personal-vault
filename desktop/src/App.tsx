@@ -5,9 +5,10 @@ import Unlock from './screens/Unlock'
 import Claims from './screens/Claims'
 import Audit from './screens/Audit'
 import Merge from './screens/Merge'
+import Storage from './screens/Storage'
 import { writeVaultFile, getActiveVaultName } from './tauriVault'
 
-type Screen = 'claims' | 'audit' | 'merge'
+type Screen = 'claims' | 'audit' | 'storage' | 'merge'
 
 interface UnlockedState {
   vault: Vault
@@ -17,6 +18,7 @@ interface UnlockedState {
 const NAV: { id: Screen; label: string }[] = [
   { id: 'claims', label: 'Claims' },
   { id: 'audit',  label: 'Audit log' },
+  { id: 'storage', label: 'Storage' },
   { id: 'merge',  label: 'Import' },
 ]
 
@@ -86,6 +88,9 @@ export default function App() {
         )}
         {screen === 'audit' && (
           <Audit vault={unlocked.vault} />
+        )}
+        {screen === 'storage' && (
+          <Storage vault={unlocked.vault} />
         )}
         {screen === 'merge' && (
           <Merge
