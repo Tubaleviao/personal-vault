@@ -3,9 +3,9 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { execFileSync } from 'child_process'
+import { execFileSync, spawnSync } from 'child_process'
 import { createZip, crc32 } from '../scripts/zip'
-import { storeManifest, collectEntries } from '../scripts/package-extension'
+import { storeManifest, collectEntries, missingReferences } from '../scripts/package-extension'
 
 test('crc32 matches known vector', () => {
   assert.equal(crc32(Buffer.from('123456789')), 0xcbf43926)
@@ -30,7 +30,19 @@ test('collectEntries strips key, skips maps, uses posix paths', () => {
   } finally { rmSync(dir, { recursive: true }) }
 })
 
-test('createZip output is readable by unzip', () => {
+test('missingReferences flags manifest paths absent from dist', () => {
+  const m = JSON.stringify({
+    background: { service_worker: 'background.js' },
+    content_scripts: [{ js: ['content.js'] }],
+    action: { default_popup: 'popup/index.html' },
+    icons: { 16: 'icons/icon16.png' },
+  })
+  assert.deepEqual(missingReferences(m, ['background.js', 'content.js', 'popup/index.html', 'icons/icon16.png']), [])
+  assert.deepEqual(missingReferences(m, ['background.js', 'icons/icon16.png']), ['content.js', 'popup/index.html'])
+})
+
+const hasUnzip = spawnSync('unzip', ['-v']).status === 0
+test('createZip output is readable by unzip', { skip: !hasUnzip && 'unzip not installed' }, () => {
   const dir = mkdtempSync(join(tmpdir(), 'zip-'))
   try {
     const big = Buffer.from('hello world '.repeat(500))

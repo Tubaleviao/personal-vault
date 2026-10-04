@@ -27,12 +27,14 @@ const DOS_TIME = 0
 const DOS_DATE = (0 << 9) | (1 << 5) | 1
 
 export function createZip(entries: ZipEntry[]): Buffer {
+  if (entries.length > 0xffff) throw new Error('createZip: too many entries (zip64 unsupported)')
   const parts: Buffer[] = []
   const central: Buffer[] = []
   let offset = 0
   for (const { name, data } of entries) {
     const nameBuf = Buffer.from(name, 'utf8')
     const comp = deflateRawSync(data)
+    if (data.length > 0xffffffff || offset + comp.length > 0xfffffff0) throw new Error('createZip: archive too large (zip64 unsupported)')
     const crc = crc32(data)
 
     const local = Buffer.alloc(30)
@@ -50,7 +52,7 @@ export function createZip(entries: ZipEntry[]): Buffer {
 
     const cd = Buffer.alloc(46)
     cd.writeUInt32LE(0x02014b50, 0)
-    cd.writeUInt16LE(20, 4)           // version made by
+    cd.writeUInt16LE((3 << 8) | 20, 4) // version made by: Unix, 2.0
     cd.writeUInt16LE(20, 6)           // version needed
     cd.writeUInt16LE(0x0800, 8)
     cd.writeUInt16LE(8, 10)
@@ -60,6 +62,7 @@ export function createZip(entries: ZipEntry[]): Buffer {
     cd.writeUInt32LE(comp.length, 20)
     cd.writeUInt32LE(data.length, 24)
     cd.writeUInt16LE(nameBuf.length, 28)
+    cd.writeUInt32LE(((0o100644 << 16) >>> 0), 38) // external attrs: regular file 0644
     cd.writeUInt32LE(offset, 42)
     central.push(cd, nameBuf)
 
