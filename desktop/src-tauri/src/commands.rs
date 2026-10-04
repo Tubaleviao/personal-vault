@@ -119,6 +119,10 @@ pub fn set_storage_path(path: Option<String>) -> Result<(), String> {
 /// Read the vault blob at the external storage path. Errors are `CODE: message`.
 #[tauri::command(async)]
 pub fn read_external_vault(path: String) -> Result<String, String> {
+    // Same restriction as the write command: the webview cannot read arbitrary files.
+    if get_storage_path()?.as_deref() != Some(path.as_str()) {
+        return Err("NOT_CONFIGURED: path does not match the configured storage path".to_string());
+    }
     let p = std::path::Path::new(&path);
     fs::read_to_string(p).map_err(|e| external_io_error(p, &e))
 }
