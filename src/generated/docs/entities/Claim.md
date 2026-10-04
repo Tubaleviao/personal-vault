@@ -16,6 +16,7 @@ A single typed data item stored in the vault, individually addressable for field
 | `source` | enum (`self-attested`, `issuer-signed`, `imported`) | yes |  | Provenance of this claim |
 | `verification` | enum (`none`, `self`, `verified`) | yes |  | Verification level |
 | `issuedAt` | timestamp | yes |  |  |
+| `updatedAt` | timestamp | no |  | Last modification time; null on legacy claims (falls back to issuedAt) |
 | `expiresAt` | timestamp | no |  | Optional expiry; null means no expiry |
 | `issuerDid` | string | no | ✓ | DID of the external issuer if source=issuer-signed |
 

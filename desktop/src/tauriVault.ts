@@ -97,7 +97,10 @@ export async function getStoragePath(): Promise<string | null> {
 
 export async function setStoragePath(path: string | null): Promise<void> {
   try {
+    const previous = await invoke<string | null>('get_storage_path')
     await invoke<void>('set_storage_path', { path })
+    // Re-saving the same path keeps the base: wiping it would hide a local/remote conflict.
+    if (previous === path) return
     // The sync base describes the previous location's shared history; drop it.
     // The storage path is shared by every vault, so drop every vault's base.
     try {
@@ -179,7 +182,16 @@ export function compareCopies(
  * records the error. Unless `force`, an existing storage copy is only replaced when
  * it belongs to the same vault and is strictly older.
  */
-async function mirrorToStorage(vault: PersistedVault, force = false): Promise<void> {
+let _mirrorQueue: Promise<void> = Promise.resolve()
+
+/** Mirrors run one at a time so overlapping saves cannot write an older blob last. */
+function mirrorToStorage(vault: PersistedVault, force = false): Promise<void> {
+  const run = _mirrorQueue.then(() => mirrorNow(vault, force))
+  _mirrorQueue = run.catch(() => {})
+  return run
+}
+
+async function mirrorNow(vault: PersistedVault, force: boolean): Promise<void> {
   try {
     const path = await getStoragePath()
     if (!path) { _lastSyncError = null; return }

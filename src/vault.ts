@@ -286,7 +286,7 @@ export class Vault {
       const now = new Date().toISOString()
       ;(this._state.revivedClaims ??= {})[claim.id] = now > tomb ? now : tomb + '~'
     }
-    this._state.claims[claim.id] = { ...claim, ownerId: this._state.owner.id, updatedAt: claim.updatedAt ?? new Date().toISOString() }
+    this._state.claims[claim.id] = { ...claim, ownerId: this._state.owner.id, updatedAt: claim.updatedAt ?? claim.issuedAt }
     this._appendAudit('claim-added', 'owner', null, { claimType: claim.type })
   }
 
