@@ -54,14 +54,17 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
       if (!otherPersisted) throw new Error('Could not read vault file.')
 
       const other = await VaultClass.open(otherPersisted, state.passphrase)
-      const claims = other.listClaims()
-      other.lock().catch(() => { /* best effort */ })
-
+      const before = vault.listClaims().length
       let added = 0
-      for (const claim of claims) {
-        const before = vault.listClaims().length
-        vault.importClaim(claim)
-        if (vault.listClaims().length > before) added++
+      try {
+        // Same owner: merge honours tombstones and updatedAt.
+        added = vault.mergeFrom(other).onlyRemote
+      } catch (mergeErr) {
+        if (!(mergeErr instanceof Error && /different owners/.test(mergeErr.message))) throw mergeErr
+        for (const claim of other.listClaims()) vault.importClaim(claim)
+        added = Math.max(0, vault.listClaims().length - before)
+      } finally {
+        other.lock().catch(() => { /* best effort */ })
       }
 
       const persisted = await vault.seal()

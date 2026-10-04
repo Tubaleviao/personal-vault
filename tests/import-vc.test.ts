@@ -39,3 +39,14 @@ test('rejects malformed JSON and no-credential files', async () => {
   await assert.rejects(parseVCWalletExport('nope'))
   await assert.rejects(parseVCWalletExport('{"a":1}'))
 })
+
+test('expired credential is never verified; missing proofValue does not throw', async () => {
+  const bad = { type: 'Ed25519Signature2020', created: 'x', verificationMethod: 'did:example:issuer#k', proofPurpose: 'assertionMethod' }
+  const claims = await parseVCWalletExport(JSON.stringify([vc({ proof: bad }), vc({ expirationDate: '2020-01-01T00:00:00Z' })]))
+  assert.ok(claims.length > 0 && claims.every(c => c.verification === 'none'))
+})
+
+test('array credentialSubject is imported', async () => {
+  const claims = await parseVCWalletExport(JSON.stringify(vc({ credentialSubject: [{ a: '1' }, { b: '2' }] })))
+  assert.equal(claims.length, 2)
+})

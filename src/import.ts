@@ -93,8 +93,7 @@ export function parseCsv(text: string, delimiter = ','): string[][] {
 
 /**
  * Parse a CSV with a header row whose column names are autofill fields
- * (e.g. `First Name,Last Name,Email,Phone`). Uses the first data row that
- * supplies each claim type.
+ * (e.g. `First Name,Last Name,Email,Phone`). Uses the first data row only.
  */
 export function parseAutofillCsv(text: string): ImportedAutofillClaim[] {
   const body = text.replace(/^\uFEFF/, '')
@@ -104,6 +103,7 @@ export function parseAutofillCsv(text: string): ImportedAutofillClaim[] {
   const [header, ...rows] = parseCsv(body, delimiter)
   if (!header) return []
   const pairs: [string, unknown][] = []
-  for (const row of rows) header.forEach((h, i) => pairs.push([h, row[i]]))
+  // One row only: mixing columns from different rows would combine different people's data.
+  for (const row of rows.slice(0, 1)) header.forEach((h, i) => pairs.push([h, row[i]]))
   return collect(pairs)
 }

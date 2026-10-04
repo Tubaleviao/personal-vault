@@ -181,11 +181,14 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
   }
 
   const handleMergeAndSave = async () => {
-    if (!preview) return
+    if (!preview || !divergence) return
     setBusy(true)
     setStatus(null)
     try {
-      await applyResolution(preview.merged, 'Merged and saved to both the local copy and storage.', true)
+      // Re-merge from a fresh seal: edits made since the preview must not be lost.
+      const sealedLocal = await vault.seal()
+      const { vault: merged } = await mergeCopies(sealedLocal, divergence.remote, passphrase)
+      await applyResolution(merged, 'Merged and saved to both the local copy and storage.', true)
     } catch (err) {
       setStatus({ ok: false, msg: describe(err) })
     } finally {

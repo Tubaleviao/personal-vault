@@ -19,7 +19,7 @@ function isObject(v: unknown): v is Record<string, unknown> {
 function looksLikeVC(v: unknown): v is RawVC {
   return isObject(v)
     && (typeof v.issuer === 'string' || (isObject(v.issuer) && typeof v.issuer.id === 'string'))
-    && isObject(v.credentialSubject)
+    && (isObject(v.credentialSubject) || (Array.isArray(v.credentialSubject) && v.credentialSubject.every(isObject)))
 }
 
 /** Collect VCs from a bare VC, an array, or a wrapper (VP / wallet export) holding them. */

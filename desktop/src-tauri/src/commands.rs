@@ -117,8 +117,16 @@ pub fn set_storage_path(path: Option<String>) -> Result<(), String> {
             if !std::path::Path::new(p).is_absolute() {
                 return Err("NOT_CONFIGURED: storage path must be absolute".to_string());
             }
-            fs::create_dir_all(vault_dir()?).map_err(|e| format!("Failed to create vault dir: {e}"))?;
-            fs::write(&cfg, serde_json::json!({ "path": p }).to_string())
+            let dir = vault_dir()?;
+            // The app's own vault directory holds vault.json and the storage config; mirroring into it
+            // would overwrite them.
+            if std::path::Path::new(p).starts_with(&dir) {
+                return Err("NOT_CONFIGURED: storage path must be outside the app's vault directory".to_string());
+            }
+            fs::create_dir_all(&dir).map_err(|e| format!("Failed to create vault dir: {e}"))?;
+            let tmp = cfg.with_extension("json.tmp");
+            fs::write(&tmp, serde_json::json!({ "path": p }).to_string())
+                .and_then(|_| fs::rename(&tmp, &cfg))
                 .map_err(|e| format!("Failed to save storage config: {e}"))
         }
         None => match fs::remove_file(&cfg) {
