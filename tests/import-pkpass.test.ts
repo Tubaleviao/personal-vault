@@ -73,3 +73,13 @@ test('pkpass: accepts wrapped folder, rejects bombs and corrupt deflate', async 
   bad[30 + 'pass.json'.length] = 0xff
   await assert.rejects(parsePkpass(bad), /Corrupt/)
 })
+
+test('pass.json: bare member/holder keys are not treated as the holder name', () => {
+  const t = JSON.stringify({ formatVersion: 1, storeCard: { primaryFields: [{ key: 'member', value: 'Gold' }, { key: 'holder', value: '00123' }, { key: 'memberName', value: 'Ana' }] } })
+  assert.deepEqual(parsePassJson(t).map(c => [c.type, c.value]), [['schema:name', 'Ana']])
+})
+
+test('pass.json: only pass-style blocks are scanned', () => {
+  const t = JSON.stringify({ formatVersion: 1, userInfo: { primaryFields: [{ key: 'email', value: 'dev@x.co' }] } })
+  assert.deepEqual(parsePassJson(t), [])
+})

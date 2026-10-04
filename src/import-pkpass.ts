@@ -5,12 +5,14 @@ import { autofillFieldToClaimType, makeImportedClaim, type ImportedAutofillClaim
 
 // backFields are excluded: they carry issuer contact details (support email/phone), not the holder's.
 const FIELD_GROUPS = ['headerFields', 'primaryFields', 'secondaryFields', 'auxiliaryFields'] as const
-const HOLDER_NAME_FIELDS = new Set(['name', 'passenger', 'passengername', 'member', 'membername', 'holder', 'holdername', 'cardholder'])
+const HOLDER_NAME_FIELDS = new Set(['name', 'passenger', 'passengername', 'membername', 'holdername', 'cardholder'])
 
 function passFieldToClaimType(field: string): string | null {
   if (HOLDER_NAME_FIELDS.has(field.toLowerCase().replace(/[^a-z0-9]/g, ''))) return 'schema:name'
   return autofillFieldToClaimType(field)
 }
+// Bare 'member'/'holder' are excluded: on store cards they usually hold a tier or member number, not a name.
+const STYLE_KEYS = ['boardingPass', 'coupon', 'eventTicket', 'generic', 'storeCard'] as const
 const MAX_PASS_JSON = 5 * 1024 * 1024
 
 /**
@@ -24,7 +26,8 @@ export function parsePassJson(text: string): ImportedAutofillClaim[] {
   }
   const seen = new Map<string, ImportedAutofillClaim>()
   // Pass style key (boardingPass, generic, storeCard, ...) holds the field groups.
-  for (const style of Object.values(data)) {
+  for (const styleKey of STYLE_KEYS) {
+    const style = data[styleKey]
     if (!style || typeof style !== 'object' || Array.isArray(style)) continue
     for (const group of FIELD_GROUPS) {
       const fields = (style as Record<string, unknown>)[group]
@@ -48,7 +51,7 @@ export function parsePassJson(text: string): ImportedAutofillClaim[] {
 
 /** Inflate raw deflate data, aborting as soon as output passes MAX_PASS_JSON (guards against decompression bombs). */
 async function inflateCapped(raw: Uint8Array): Promise<Uint8Array> {
-  const reader = new Blob([new Uint8Array(raw)]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader()
+  const reader = new Blob([raw as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader()
   const chunks: Uint8Array[] = []
   let total = 0
   try {
@@ -82,19 +85,28 @@ export async function extractPassJson(zip: Uint8Array): Promise<string> {
   if (eocd < 0) throw new Error('Not a .pkpass file (no ZIP directory)')
   const count = dv.getUint16(eocd + 10, true)
   let p = dv.getUint32(eocd + 16, true)
+  type Entry = { flags: number; method: number; csize: number; usize: number; lho: number }
+  let root: Entry | null = null
+  let nested: Entry | null = null
   for (let n = 0; n < count; n++) {
     if (p + 46 > zip.length || dv.getUint32(p, true) !== 0x02014b50) throw new Error('Corrupt .pkpass ZIP directory')
-    const flags = dv.getUint16(p + 8, true)
-    const method = dv.getUint16(p + 10, true)
-    const csize = dv.getUint32(p + 20, true)
-    const usize = dv.getUint32(p + 24, true)
     const nlen = dv.getUint16(p + 28, true)
-    const xlen = dv.getUint16(p + 30, true)
-    const clen = dv.getUint16(p + 32, true)
-    const lho = dv.getUint32(p + 42, true)
+    const entry: Entry = {
+      flags: dv.getUint16(p + 8, true),
+      method: dv.getUint16(p + 10, true),
+      csize: dv.getUint32(p + 20, true),
+      usize: dv.getUint32(p + 24, true),
+      lho: dv.getUint32(p + 42, true),
+    }
     const name = new TextDecoder().decode(zip.subarray(p + 46, p + 46 + nlen))
-    p += 46 + nlen + xlen + clen
-    if (name.replace(/^\.\//, '') !== 'pass.json' && !/^[^/]+\/pass\.json$/.test(name)) continue
+    p += 46 + nlen + dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true)
+    // Prefer the root pass.json; fall back to the first '<dir>/pass.json'.
+    if (name.replace(/^\.\//, '') === 'pass.json') { root = entry; break }
+    if (nested === null && /^[^/]+\/pass\.json$/.test(name)) nested = entry
+  }
+  const found = root ?? nested
+  if (found) {
+    const { flags, method, csize, usize, lho } = found
     if (flags & 1) throw new Error('Encrypted .pkpass is not supported')
     if (csize === 0xffffffff || usize === 0xffffffff || usize > MAX_PASS_JSON || csize > MAX_PASS_JSON) throw new Error('pass.json too large')
     if (lho + 30 > zip.length || dv.getUint32(lho, true) !== 0x04034b50) throw new Error('Corrupt .pkpass ZIP entry')
