@@ -614,7 +614,7 @@ async function handleMessage(
 
     let other: Vault
     try {
-      other = await Vault.open(blob, message.passphrase)
+      other = await Vault.open(blob, message.passphrase, { recordUnlock: false })
     } catch (err) {
       const wrong = err instanceof Error && err.message === 'Incorrect passphrase'
       sendResponse({
@@ -627,15 +627,17 @@ async function handleMessage(
     try {
       if (session) {
         const before = session.vault.listClaims().length
+        let added = 0
         try {
           // Same owner: a diverged copy of this vault; merge honours tombstones and updatedAt.
-          session.vault.mergeFrom(other)
+          const summary = session.vault.mergeFrom(other)
+          added = summary.onlyRemote + summary.remoteWins
         } catch (mergeErr) {
           if (!(mergeErr instanceof Error && /different owners/.test(mergeErr.message))) throw mergeErr
           // Different owner: just bring the claims across.
           for (const claim of other.listClaims()) session.vault.importClaim(claim)
+          added = Math.max(0, session.vault.listClaims().length - before)
         }
-        const added = Math.max(0, session.vault.listClaims().length - before)
         await saveVaultBlob(await session.vault.seal())
         sendResponse({ type: 'MERGE_RESULT', ok: true, added })
       } else {
