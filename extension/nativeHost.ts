@@ -5,7 +5,7 @@
  * registered (see native-host/install.sh), the extension routes vault reads
  * and writes through it instead of chrome.storage.local.  This makes the
  * desktop app the single source of truth for the vault file, so the two UIs
- * always see the same data without needing the relay.
+ * always see the same data without needing a sync service.
  *
  * The native host is probed once per service-worker lifetime.  If the connect
  * attempt fails (host not installed, binary not found) we fall back silently to

@@ -116,7 +116,7 @@ export interface VaultHeader {
   salt: string            // base64url-encoded 32-byte random salt
   keyVerificationHash: string
   mnemonicCommitment: string  // SHA-256 hex of the BIP-39 mnemonic
-  sequenceNumber: number  // increments on every seal(); used by relay to pick the newer copy
+  sequenceNumber: number  // increments on every seal(); used by storage sync and merge to pick the newer copy
   scryptN: number         // scrypt cost parameter — 65536 (2^16) for new vaults, 16384 (2^14) for old
 }
 
@@ -400,13 +400,13 @@ export class Vault {
       const lt = l!.updatedAt ?? l!.issuedAt
       const rt = r!.updatedAt ?? r!.issuedAt
       if (lt === rt) {
-        if (JSON.stringify(sortKeys({ ...l!, ownerId: '' })) === JSON.stringify(sortKeys({ ...r!, ownerId: '' }))) {
+        const lj = JSON.stringify(sortKeys({ ...l!, ownerId: '' }))
+        const rj = JSON.stringify(sortKeys({ ...r!, ownerId: '' }))
+        if (lj === rj) {
           summary.identical++
         } else {
           // Same timestamp, different content (e.g. legacy edit without updatedAt): pick the
           // larger canonical form so both sides choose the same winner whatever the merge direction.
-          const lj = JSON.stringify(sortKeys({ ...l!, ownerId: '' }))
-          const rj = JSON.stringify(sortKeys({ ...r!, ownerId: '' }))
           if (rj > lj) {
             local.claims[id] = { ...r!, ownerId: local.owner.id }
             summary.remoteWins++

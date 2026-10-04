@@ -25,11 +25,15 @@ export function getActiveVaultName(): string {
 export async function readVaultFile(): Promise<PersistedVault | null> {
   const raw = await invoke<string | null>('read_vault_file', { name: _activeVaultName })
   if (raw === null) return null
+  // Never return null for an unreadable file: callers treat null as "no vault" and offer to create one over it.
+  let parsed: unknown
   try {
-    return JSON.parse(raw) as PersistedVault
+    parsed = JSON.parse(raw)
   } catch {
-    return null
+    throw new Error('Local vault file is corrupt (not valid JSON); it was left untouched')
   }
+  if (!isPersistedVault(parsed)) throw new Error('Local vault file is not a valid vault; it was left untouched')
+  return parsed
 }
 
 /** Write the local working copy only, without mirroring to storage (used by merge, which mirrors with force). */
@@ -95,7 +99,10 @@ export async function setStoragePath(path: string | null): Promise<void> {
   try {
     await invoke<void>('set_storage_path', { path })
     // The sync base describes the previous location's shared history; drop it.
-    try { localStorage.removeItem(baseKey()) } catch { /* storage unavailable */ }
+    // The storage path is shared by every vault, so drop every vault's base.
+    try {
+      for (const k of Object.keys(localStorage)) if (k.startsWith(BASE_PREFIX)) localStorage.removeItem(k)
+    } catch { /* storage unavailable */ }
   } catch (err) {
     throw toStorageError(err)
   }
@@ -125,7 +132,8 @@ const seqOf = (v: PersistedVault) => v.header.sequenceNumber ?? 0
 // nonce differs from that base has changed since; if both sides changed, they diverged
 // even when their sequence numbers differ.
 
-const baseKey = () => `vault-sync-base:${_activeVaultName}`
+const BASE_PREFIX = 'vault-sync-base:'
+const baseKey = () => `${BASE_PREFIX}${_activeVaultName}`
 
 export function getSyncBase(): string | null {
   try { return localStorage.getItem(baseKey()) } catch { return null }
