@@ -356,6 +356,11 @@ components:
         issuedAt:
           type: string
           format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Last modification time; null on legacy claims (falls back to issuedAt)
         expiresAt:
           type: string
           format: date-time
@@ -461,6 +466,7 @@ components:
             - recovery-started
             - recovery-completed
             - bundle-accessed
+            - merge
         actor:
           type: string
           description: "Who triggered the event: \"owner\", \"system\", or a grantee DID"

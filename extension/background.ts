@@ -626,13 +626,16 @@ async function handleMessage(
 
     try {
       if (session) {
-        const otherClaims = other.listClaims()
-        let added = 0
-        for (const claim of otherClaims) {
-          const before = session.vault.listClaims().length
-          session.vault.importClaim(claim)
-          if (session.vault.listClaims().length > before) added++
+        const before = session.vault.listClaims().length
+        try {
+          // Same owner: a diverged copy of this vault; merge honours tombstones and updatedAt.
+          session.vault.mergeFrom(other)
+        } catch (mergeErr) {
+          if (!(mergeErr instanceof Error && /different owners/.test(mergeErr.message))) throw mergeErr
+          // Different owner: just bring the claims across.
+          for (const claim of other.listClaims()) session.vault.importClaim(claim)
         }
+        const added = Math.max(0, session.vault.listClaims().length - before)
         await saveVaultBlob(await session.vault.seal())
         sendResponse({ type: 'MERGE_RESULT', ok: true, added })
       } else {

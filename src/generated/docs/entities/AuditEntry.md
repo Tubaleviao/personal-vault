@@ -12,7 +12,7 @@ One record in the append-only, hash-chained audit log
 | `id` | uuid | yes |  |  |
 | `ownerId` | uuid | yes |  |  |
 | `grantId` | uuid | no |  | Grant involved, if applicable |
-| `action` | enum (`grant-created`, `grant-revoked`, `grant-expired`, `claim-added`, `claim-deleted`, `vault-unlocked`, `vault-locked`, `recovery-started`, `recovery-completed`, `bundle-accessed`) | yes |  | The event type |
+| `action` | enum (`grant-created`, `grant-revoked`, `grant-expired`, `claim-added`, `claim-deleted`, `vault-unlocked`, `vault-locked`, `recovery-started`, `recovery-completed`, `bundle-accessed`, `merge`) | yes |  | The event type |
 | `actor` | string | yes |  | Who triggered the event: "owner", "system", or a grantee DID |
 | `detail` | json | no |  | Optional structured context (claim types shared, grantee ref, etc.) |
 | `prevHash` | string | no |  | SHA-256 hash of the previous AuditEntry; null for the genesis entry |

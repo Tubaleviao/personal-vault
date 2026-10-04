@@ -6,7 +6,7 @@ CREATE TYPE claim_source_enum AS ENUM ('self-attested', 'issuer-signed', 'import
 CREATE TYPE claim_verification_enum AS ENUM ('none', 'self', 'verified');
 CREATE TYPE grant_mode_enum AS ENUM ('push', 'pull');
 CREATE TYPE grant_status_enum AS ENUM ('active', 'revoked', 'expired');
-CREATE TYPE audit_entry_action_enum AS ENUM ('grant-created', 'grant-revoked', 'grant-expired', 'claim-added', 'claim-deleted', 'vault-unlocked', 'vault-locked', 'recovery-started', 'recovery-completed', 'bundle-accessed');
+CREATE TYPE audit_entry_action_enum AS ENUM ('grant-created', 'grant-revoked', 'grant-expired', 'claim-added', 'claim-deleted', 'vault-unlocked', 'vault-locked', 'recovery-started', 'recovery-completed', 'bundle-accessed', 'merge');
 CREATE TABLE IF NOT EXISTS vault_users (
   id UUID PRIMARY KEY,
   did TEXT NOT NULL,
@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS claims (
   source claim_source_enum NOT NULL,
   verification claim_verification_enum NOT NULL,
   issued_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ,
   expires_at TIMESTAMPTZ,
   issuer_did TEXT,
   CONSTRAINT fk_claim_owner_id FOREIGN KEY (owner_id) REFERENCES vault_users (id)

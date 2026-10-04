@@ -78,6 +78,7 @@ export default fabric()
       .description('Provenance of this claim'))
     .field('verification', f => f.enum(['none', 'self', 'verified']).description('Verification level'))
     .field('issuedAt',     f => f.timestamp())
+    .field('updatedAt',    f => f.timestamp().nullable().description('Last modification time; null on legacy claims (falls back to issuedAt)'))
     .field('expiresAt',    f => f.timestamp().nullable().description('Optional expiry; null means no expiry'))
     .field('issuerDid',    f => f.string().nullable().pii().gdpr('identity')
       .description('DID of the external issuer if source=issuer-signed'))
@@ -154,6 +155,7 @@ export default fabric()
       'recovery-started',
       'recovery-completed',
       'bundle-accessed',
+      'merge',
     ]).description('The event type'))
     .field('actor',     f => f.string().description('Who triggered the event: "owner", "system", or a grantee DID'))
     .field('detail',    f => f.json().nullable().description('Optional structured context (claim types shared, grantee ref, etc.)'))

@@ -161,6 +161,13 @@
   rdfs:domain <https://personalvault.local/schema/Claim> ;
   rdfs:range xsd:dateTime .
 
+<https://personalvault.local/schema/Claim_updatedAt>
+  a owl:DatatypeProperty ;
+  rdfs:label "updatedAt" ;
+  rdfs:domain <https://personalvault.local/schema/Claim> ;
+  rdfs:range xsd:dateTime ;
+  rdfs:comment "Last modification time; null on legacy claims (falls back to issuedAt)" .
+
 <https://personalvault.local/schema/Claim_expiresAt>
   a owl:DatatypeProperty ;
   rdfs:label "expiresAt" ;

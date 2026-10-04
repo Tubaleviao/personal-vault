@@ -88,7 +88,7 @@ export type GrantValidationResult =
 
 /**
  * Validate a grant — check signature, status, and expiry.
- * Callers (relay, verifier) use this before serving data.
+ * Callers (verifier) use this before serving data.
  */
 export async function validateGrant(grant: Grant, ownerDid: string): Promise<GrantValidationResult> {
   // Check status first (cheapest)
@@ -164,7 +164,7 @@ export async function createPushGrant(options: {
 // ── Revocation ────────────────────────────────────────────────────────────────
 
 /**
- * Revoke a grant. For pull grants this immediately invalidates relay access.
+ * Revoke a grant. For pull grants this immediately invalidates access.
  * For push grants, the copied bundle cannot be recalled, but this records the
  * revocation in the audit log and marks the grant as revoked.
  */

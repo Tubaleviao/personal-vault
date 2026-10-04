@@ -25,11 +25,15 @@ export function getActiveVaultName(): string {
 export async function readVaultFile(): Promise<PersistedVault | null> {
   const raw = await invoke<string | null>('read_vault_file', { name: _activeVaultName })
   if (raw === null) return null
+  // Never return null for an unreadable file: callers treat null as "no vault" and offer to create one over it.
+  let parsed: unknown
   try {
-    return JSON.parse(raw) as PersistedVault
+    parsed = JSON.parse(raw)
   } catch {
-    return null
+    throw new Error('Local vault file is corrupt (not valid JSON); it was left untouched')
   }
+  if (!isPersistedVault(parsed)) throw new Error('Local vault file is not a valid vault; it was left untouched')
+  return parsed
 }
 
 /** Write the local working copy only, without mirroring to storage (used by merge, which mirrors with force). */
@@ -93,9 +97,15 @@ export async function getStoragePath(): Promise<string | null> {
 
 export async function setStoragePath(path: string | null): Promise<void> {
   try {
+    const previous = await invoke<string | null>('get_storage_path')
     await invoke<void>('set_storage_path', { path })
+    // Re-saving the same path keeps the base: wiping it would hide a local/remote conflict.
+    if (previous === path) return
     // The sync base describes the previous location's shared history; drop it.
-    try { localStorage.removeItem(baseKey()) } catch { /* storage unavailable */ }
+    // The storage path is shared by every vault, so drop every vault's base.
+    try {
+      for (const k of Object.keys(localStorage)) if (k.startsWith(BASE_PREFIX)) localStorage.removeItem(k)
+    } catch { /* storage unavailable */ }
   } catch (err) {
     throw toStorageError(err)
   }
@@ -125,7 +135,8 @@ const seqOf = (v: PersistedVault) => v.header.sequenceNumber ?? 0
 // nonce differs from that base has changed since; if both sides changed, they diverged
 // even when their sequence numbers differ.
 
-const baseKey = () => `vault-sync-base:${_activeVaultName}`
+const BASE_PREFIX = 'vault-sync-base:'
+const baseKey = () => `${BASE_PREFIX}${_activeVaultName}`
 
 export function getSyncBase(): string | null {
   try { return localStorage.getItem(baseKey()) } catch { return null }
@@ -171,7 +182,16 @@ export function compareCopies(
  * records the error. Unless `force`, an existing storage copy is only replaced when
  * it belongs to the same vault and is strictly older.
  */
-async function mirrorToStorage(vault: PersistedVault, force = false): Promise<void> {
+let _mirrorQueue: Promise<void> = Promise.resolve()
+
+/** Mirrors run one at a time so overlapping saves cannot write an older blob last. */
+function mirrorToStorage(vault: PersistedVault, force = false): Promise<void> {
+  const run = _mirrorQueue.then(() => mirrorNow(vault, force))
+  _mirrorQueue = run.catch(() => {})
+  return run
+}
+
+async function mirrorNow(vault: PersistedVault, force: boolean): Promise<void> {
   try {
     const path = await getStoragePath()
     if (!path) { _lastSyncError = null; return }
@@ -191,7 +211,7 @@ async function mirrorToStorage(vault: PersistedVault, force = false): Promise<vo
         if (cmp !== 'local') throw new StorageError('CONFLICT')
       }
     }
-    await invoke<void>('write_external_vault', { path, blob: JSON.stringify(vault) })
+    await invoke<void>('write_external_vault', { path, blob: JSON.stringify(vault), overwriteInvalid: force })
     setSyncBase(vault)
     _lastSyncError = null
   } catch (err) {

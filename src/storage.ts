@@ -55,7 +55,7 @@ export async function detectDriveMissing(path: string): Promise<boolean> {
     return !st.isDirectory()
   } catch (err) {
     const code = (err as NodeJS.ErrnoException)?.code
-    if (code === 'ENOENT' || code === 'ENOTDIR') return true
+    if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'ENODEV') return true
     throw err
   }
 }
@@ -76,7 +76,11 @@ async function mapError(err: unknown, path: string): Promise<unknown> {
   }
   if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'ENODEV') {
     let missing: boolean
-    try { missing = await detectDriveMissing(path) } catch (e) { return await mapError(e, path) }
+    try { missing = await detectDriveMissing(path) } catch (e) {
+      // Cannot even stat the parent directory: report the drive as unavailable (no re-mapping, to avoid recursion).
+      const c = (e as NodeJS.ErrnoException)?.code
+      return new VaultStorageError(c === 'EACCES' || c === 'EPERM' ? 'PERMISSION_DENIED' : 'DRIVE_MISSING', path, e)
+    }
     return new VaultStorageError(missing ? 'DRIVE_MISSING' : 'NOT_FOUND', path, err)
   }
   return err

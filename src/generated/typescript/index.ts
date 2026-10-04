@@ -34,6 +34,7 @@ export interface Claim {
   source: "self-attested" | "issuer-signed" | "imported"
   verification: "none" | "self" | "verified"
   issuedAt: Date
+  updatedAt?: Date
   expiresAt?: Date
   issuerDid?: string
   owner?: VaultUser
@@ -47,6 +48,7 @@ export const claimSchema = z.object({
   source: z.enum(["self-attested", "issuer-signed", "imported"]),
   verification: z.enum(["none", "self", "verified"]),
   issuedAt: z.date(),
+  updatedAt: z.date().nullable(),
   expiresAt: z.date().nullable(),
   issuerDid: z.string().nullable(),
 })
@@ -96,7 +98,7 @@ export interface AuditEntry {
   id: string
   ownerId: string
   grantId?: string
-  action: "grant-created" | "grant-revoked" | "grant-expired" | "claim-added" | "claim-deleted" | "vault-unlocked" | "vault-locked" | "recovery-started" | "recovery-completed" | "bundle-accessed"
+  action: "grant-created" | "grant-revoked" | "grant-expired" | "claim-added" | "claim-deleted" | "vault-unlocked" | "vault-locked" | "recovery-started" | "recovery-completed" | "bundle-accessed" | "merge"
   actor: string
   detail?: unknown
   prevHash?: string
@@ -110,7 +112,7 @@ export const auditEntrySchema = z.object({
   id: z.string().uuid(),
   ownerId: z.string().uuid(),
   grantId: z.string().uuid().nullable(),
-  action: z.enum(["grant-created", "grant-revoked", "grant-expired", "claim-added", "claim-deleted", "vault-unlocked", "vault-locked", "recovery-started", "recovery-completed", "bundle-accessed"]),
+  action: z.enum(["grant-created", "grant-revoked", "grant-expired", "claim-added", "claim-deleted", "vault-unlocked", "vault-locked", "recovery-started", "recovery-completed", "bundle-accessed", "merge"]),
   actor: z.string(),
   detail: z.unknown().nullable(),
   prevHash: z.string().nullable(),

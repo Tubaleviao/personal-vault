@@ -42,6 +42,14 @@
       "type": "string",
       "format": "date-time"
     },
+    "updatedAt": {
+      "description": "Last modification time; null on legacy claims (falls back to issuedAt)",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
     "expiresAt": {
       "description": "Optional expiry; null means no expiry",
       "type": [

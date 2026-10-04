@@ -34,7 +34,8 @@
         "vault-locked",
         "recovery-started",
         "recovery-completed",
-        "bundle-accessed"
+        "bundle-accessed",
+        "merge"
       ]
     },
     "actor": {
