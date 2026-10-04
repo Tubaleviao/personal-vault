@@ -7,6 +7,8 @@ test('field names map to claim types', () => {
   assert.equal(autofillFieldToClaimType('family-name'), 'schema:familyName')
   assert.equal(autofillFieldToClaimType('E-mail'), 'schema:email')
   assert.equal(autofillFieldToClaimType('credit_card'), null)
+  // Bare 'name' is ambiguous (site name in password CSVs, search boxes, ...).
+  assert.equal(autofillFieldToClaimType('name'), null)
 })
 
 test('takeout: maps known fields, first value wins, skips blanks/unknown', () => {

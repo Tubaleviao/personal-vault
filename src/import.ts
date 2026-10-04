@@ -17,7 +17,6 @@ const FIELD_TO_CLAIM = new Map<string, string>(Object.entries({
   familyname: 'schema:familyName',
   lastname: 'schema:familyName',
   surname: 'schema:familyName',
-  name: 'schema:name',
   fullname: 'schema:name',
   email: 'schema:email',
   emailaddress: 'schema:email',

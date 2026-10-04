@@ -155,6 +155,14 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
     const reopened = await VaultClass.open(persisted, passphrase)
     try {
       await writeLocalVaultFile(persisted)
+    } catch (err) {
+      await reopened.discard().catch(() => { /* best effort */ })
+      throw err
+    }
+    // The local file now holds `persisted`, so the live vault must be swapped even if the storage
+    // step fails; otherwise the next save would overwrite the resolved local file with stale state.
+    let storageErr: unknown = null
+    try {
       if (toStorage) {
         await forceMirrorToStorage(persisted)
         const err = getLastSyncError()
@@ -163,12 +171,12 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
         await adoptStorageCopy(persisted)
       }
     } catch (err) {
-      await reopened.discard().catch(() => { /* best effort */ })
-      throw err
+      storageErr = err
     }
     onVaultReplaced(reopened, persisted)
     clearDivergence()
     await refresh()
+    if (storageErr) throw storageErr
     setStatus({ ok: true, msg: doneMsg })
   }
 
