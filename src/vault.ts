@@ -102,6 +102,8 @@ interface VaultState {
   claims: Record<string, Claim>
   /** claimId → deletion time. Lets a merge tell "deleted here" from "never seen here". */
   deletedClaims?: Record<string, string>
+  /** claimId → ISO time of an explicit re-import after deletion; beats an older tombstone in a merge. */
+  revivedClaims?: Record<string, string>
   grants: Record<string, Grant>
   auditLog: AuditEntry[]
 }
@@ -271,8 +273,13 @@ export class Vault {
   importClaim(claim: Claim): void {
     this._assertUnlocked()
     if (this._state.claims[claim.id]) return
-    // Explicit re-import revives a claim deleted earlier: drop its tombstone so a merge keeps it.
-    if (this._state.deletedClaims) delete this._state.deletedClaims[claim.id]
+    // Explicit re-import revives a claim deleted earlier: record it so a merge with a copy that
+    // still carries the older tombstone keeps the claim.
+    const tomb = this._state.deletedClaims?.[claim.id]
+    if (tomb) {
+      const now = new Date().toISOString()
+      ;(this._state.revivedClaims ??= {})[claim.id] = now > tomb ? now : tomb + '~'
+    }
     this._state.claims[claim.id] = { ...claim, ownerId: this._state.owner.id, updatedAt: new Date().toISOString() }
     this._appendAudit('claim-added', 'owner', null, { claimType: claim.type })
   }
@@ -292,6 +299,7 @@ export class Vault {
     const claim = this._state.claims[id]
     if (!claim) throw new Error(`Claim not found: ${id}`)
     delete this._state.claims[id]
+    if (this._state.revivedClaims) delete this._state.revivedClaims[id]
     ;(this._state.deletedClaims ??= {})[id] = new Date().toISOString()
     this._appendAudit('claim-deleted', 'owner', null, { claimType: claim.type })
   }
@@ -341,7 +349,8 @@ export class Vault {
    * Merge a diverged copy of the same vault into this one (Phase 3.5.3).
    * Claims: union, last `updatedAt` wins, deletion beats modification.
    * Grants: union, revoked > expired > active.
-   * Audit: this chain is kept; one `merge` entry records the other chain's tail hash.
+   * Audit: this chain is kept; one `merge` entry records the other chain's tail hash and carries
+ *   the other chain's entries this one lacks (`detail.mergedEntries`).
    * `header.sequenceNumber` becomes max(both) so the next seal() yields max + 1.
    */
   mergeFrom(other: Vault): MergeSummary {
@@ -359,6 +368,15 @@ export class Vault {
     const remote = other._state
 
     const tombstones: Record<string, string> = { ...remote.deletedClaims, ...local.deletedClaims }
+    const revived: Record<string, string> = { ...remote.revivedClaims }
+    for (const [id, t] of Object.entries(local.revivedClaims ?? {})) {
+      if (!revived[id] || t > revived[id]) revived[id] = t
+    }
+    // A re-import newer than the tombstone cancels it; a later delete (tombstone > revival) wins again.
+    for (const id of Object.keys(tombstones)) {
+      if (revived[id] && revived[id] > tombstones[id]) delete tombstones[id]
+      else delete revived[id]
+    }
 
     for (const id of new Set([...Object.keys(local.claims), ...Object.keys(remote.claims)])) {
       const l = local.claims[id]
@@ -373,7 +391,13 @@ export class Vault {
       const lt = l!.updatedAt ?? l!.issuedAt
       const rt = r!.updatedAt ?? r!.issuedAt
       if (lt === rt) {
-        summary.identical++
+        if (JSON.stringify(sortKeys({ ...l!, ownerId: '' })) === JSON.stringify(sortKeys({ ...r!, ownerId: '' }))) {
+          summary.identical++
+        } else {
+          // Same timestamp, different content (e.g. legacy edit without updatedAt): keep local, flag it.
+          summary.localWins++
+          summary.overwritten.push({ claimId: id, claimType: l!.type, kept: 'local' })
+        }
       } else if (rt > lt) {
         local.claims[id] = { ...r!, ownerId: local.owner.id }
         summary.remoteWins++
@@ -384,6 +408,9 @@ export class Vault {
       }
     }
     if (Object.keys(tombstones).length > 0) local.deletedClaims = tombstones
+    else delete local.deletedClaims
+    if (Object.keys(revived).length > 0) local.revivedClaims = revived
+    else delete local.revivedClaims
 
     const rank: Record<GrantStatus, number> = { active: 0, expired: 1, revoked: 2 }
     for (const [id, r] of Object.entries(remote.grants)) {
@@ -396,13 +423,17 @@ export class Vault {
     }
 
     const remoteTail = remote.auditLog[remote.auditLog.length - 1]
+    // Preserve the other device's events (bundle access, grants, ...) verbatim inside the merge entry.
+    const localIds = new Set(local.auditLog.map(e => e.id))
+    const remoteOnly = remote.auditLog.filter(e => !localIds.has(e.id))
     this._header.sequenceNumber = Math.max(
       this._header.sequenceNumber ?? 0, other._header.sequenceNumber ?? 0,
     )
     this._appendAudit('merge', 'owner', null, {
       mergedFromHash: remoteTail?.entryHash ?? null,
       mergedFromSequence: other._header.sequenceNumber ?? 0,
-      // Counts only: the per-claim overwritten[] list would grow the tamper-evident log without bound.
+      mergedEntries: remoteOnly,
+      // Counts only for claims; remote-only audit entries are kept so no event is lost.
       identical: summary.identical, localWins: summary.localWins, remoteWins: summary.remoteWins,
       onlyLocal: summary.onlyLocal, onlyRemote: summary.onlyRemote, deleted: summary.deleted,
       grantsRevoked: summary.grantsRevoked, grantsAdded: summary.grantsAdded,

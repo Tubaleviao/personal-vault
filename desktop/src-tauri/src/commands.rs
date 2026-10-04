@@ -206,7 +206,11 @@ pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
     let write_tmp = || -> std::io::Result<()> {
         let mut file = opts.open(&tmp_path)?;
         file.write_all(blob.as_bytes())?;
-        file.sync_all()
+        // Some mounts (exFAT, FUSE, network) cannot fsync; the rename below still applies.
+        match file.sync_all() {
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput) => Ok(()),
+            other => other,
+        }
     };
     if let Err(e) = write_tmp() {
         let _ = fs::remove_file(&tmp_path);

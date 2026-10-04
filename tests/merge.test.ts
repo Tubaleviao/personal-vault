@@ -131,3 +131,25 @@ test('merge: re-imported claim after delete survives merge', async () => {
   const merged = await Vault.open(await mergeVaults(l, r, PW), PW)
   assert.equal(merged.listClaims().some(c => c.id === saved.id), true)
 })
+
+test('merge: revived claim survives a copy that still has the older tombstone', async () => {
+  let saved: any
+  const b = await base(v => { saved = v.addClaim(claim('Ann')) })
+  const del = await edit(b, v => { v.deleteClaim(saved.id) })
+  const revived = await edit(del, v => { v.importClaim(saved) })
+  const once = await mergeVaults(revived, del, PW)
+  assert.equal((await Vault.open(once, PW)).listClaims().some(c => c.id === saved.id), true)
+  const twice = await mergeVaults(once, del, PW)
+  assert.equal((await Vault.open(twice, PW)).listClaims().some(c => c.id === saved.id), true)
+})
+
+test('merge: remote-only audit entries are preserved and chain verifies', async () => {
+  const b = await base(() => {})
+  const l = await edit(b, v => { v.addClaim(claim('L')) })
+  const r = await edit(b, v => { v.addClaim(claim('R')) })
+  const merged = await Vault.open(await mergeVaults(l, r, PW), PW)
+  const log = merged.getAuditLog()
+  const entry: any = log.find(e => e.action === 'merge')
+  assert.ok(entry.detail.mergedEntries.some((e: any) => e.action === 'claim-added'))
+  assert.equal(verifyChain(log).valid, true)
+})
