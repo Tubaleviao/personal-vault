@@ -255,6 +255,27 @@ export interface MsgMergeResult {
   error?: string
 }
 
+/**
+ * Popup hands the background a vault file the user picked from disk (cloud
+ * folder, flash drive) — the fallback when the desktop app is not installed.
+ * Unlocked: its claims are merged into the active vault (result: MERGE_RESULT).
+ * Locked: it is installed as the browser vault if none exists yet
+ * (result: IMPORT_FILE_RESULT); the user then unlocks it normally.
+ */
+export interface MsgImportVaultFile {
+  type: 'IMPORT_VAULT_FILE'
+  /** Raw text of the selected vault file. */
+  text: string
+  /** Passphrase of the file's vault; verified before anything is stored or merged. */
+  passphrase: string
+}
+
+export interface MsgImportFileResult {
+  type: 'IMPORT_FILE_RESULT'
+  ok: boolean
+  error?: string
+}
+
 /** Popup asks background to delete a vault by source + name. */
 export interface MsgDeleteVault {
   type: 'DELETE_VAULT'
@@ -377,6 +398,7 @@ export type PopupToBackground =
   | MsgGetVaultList
   | MsgSelectVault
   | MsgMergeVault
+  | MsgImportVaultFile
   | MsgDeleteVault
   | MsgExportToDesktop
 
@@ -388,5 +410,6 @@ export type BackgroundToPopup =
   | MsgNativeHostStatus
   | MsgVaultList
   | MsgMergeResult
+  | MsgImportFileResult
   | MsgDeleteResult
   | MsgExportResult

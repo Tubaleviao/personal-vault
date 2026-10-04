@@ -84,7 +84,7 @@ The Cloudflare Worker relay is being removed. Sync will instead write the encryp
 - [x] Remove `src/relay.ts` and `relay/worker.ts` (keep `relay/` dir with a tombstone README explaining the decision)
 - [x] Desktop: replace Sync screen with Storage screen — path input, test-read button, error states (`desktop/src/screens/Storage.tsx`; native file-dialog picker deferred — path is typed)
 - [x] Desktop: write to storage path on every vault seal; read from it on startup when local copy absent/older (`tauriVault.ts` `writeVaultFile` / `readVaultFileSynced`)
-- [ ] Extension: remove relay URL input from popup; add vault file import button for the no-desktop-app fallback
+- [x] Extension: remove relay URL input from popup; add vault file import button for the no-desktop-app fallback (`IMPORT_VAULT_FILE`; unlocked → merge, locked → restore into empty browser slot; `src/vault-file.ts`)
 - [ ] Update `CLAUDE.md` module map and invariants
 - [ ] Update `THREAT_MODEL.md` — remove relay threat surface, add cloud provider and flash drive threat entries
 - [ ] Update `README.md` — remove relay setup instructions, document cloud storage setup
