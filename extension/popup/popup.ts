@@ -583,6 +583,10 @@ function mountFileImport(container: HTMLElement, unlocked: boolean) {
       } else {
         await init()
       }
+    } catch (err) {
+      pass.value = ''
+      status.style.color = '#f87171'
+      status.textContent = `Import failed: ${err instanceof Error ? err.message : String(err)}`
     } finally {
       go.removeAttribute('disabled')
     }

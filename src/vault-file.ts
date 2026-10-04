@@ -13,7 +13,7 @@ export function isPersistedVault(v: unknown): v is PersistedVault {
     && typeof o.header.ownerId === 'string'
     && typeof o.header.salt === 'string'
     && typeof o.header.keyVerificationHash === 'string'
-    // sequenceNumber is absent in legacy vaults; Vault.seal and relay treat it as 0.
+    // sequenceNumber is absent in legacy vaults; Vault.seal treats it as 0.
     && (o.header.sequenceNumber === undefined
       || (Number.isInteger(o.header.sequenceNumber) && o.header.sequenceNumber >= 0))
     // scryptN is absent in legacy vaults; Vault.open falls back to SCRYPT_N_V1.

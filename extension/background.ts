@@ -633,6 +633,11 @@ async function handleMessage(
         sendResponse({ type: 'MERGE_RESULT', ok: true, added })
       } else {
         // Locked: only fill an empty browser slot — never overwrite an existing vault.
+        if (await useNativeHost()) {
+          // _selectedVaultSource resets on lock, so a browser vault would be ignored in favour of the desktop vault.
+          sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'The desktop app is available. Import the file there, or unlock a vault and merge it.' })
+          return
+        }
         const existing = await chrome.storage.local.get('vault')
         if (existing['vault']) {
           sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'A browser vault already exists. Unlock it, then import the file to merge.' })
