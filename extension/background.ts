@@ -582,7 +582,7 @@ async function handleMessage(
     try {
       const other = await Vault.open(otherBlob, message.passphrase)
       const otherClaims = other.listClaims()
-      other.lock().catch(() => { /* best effort */ })
+      other.discard().catch(() => { /* best effort */ })
 
       let added = 0
       for (const claim of otherClaims) {
@@ -615,8 +615,12 @@ async function handleMessage(
     let other: Vault
     try {
       other = await Vault.open(blob, message.passphrase)
-    } catch {
-      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'Wrong passphrase for that vault file.' })
+    } catch (err) {
+      const wrong = err instanceof Error && err.message === 'Incorrect passphrase'
+      sendResponse({
+        type: 'IMPORT_FILE_RESULT', ok: false,
+        error: wrong ? 'Wrong passphrase for that vault file.' : 'That vault file could not be opened; it may be damaged.',
+      })
       return
     }
 
@@ -650,7 +654,7 @@ async function handleMessage(
     } catch (err) {
       sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: String(err) })
     } finally {
-      other.lock().catch(() => { /* best effort */ })
+      other.discard().catch(() => { /* best effort */ })
     }
     return
   }

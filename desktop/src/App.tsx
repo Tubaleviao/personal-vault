@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import type { Vault } from '@vault/vault'
 import type { PersistedVault } from '@vault/vault'
 import Unlock from './screens/Unlock'
@@ -6,7 +6,7 @@ import Claims from './screens/Claims'
 import Audit from './screens/Audit'
 import Merge from './screens/Merge'
 import Storage from './screens/Storage'
-import { writeVaultFile, getActiveVaultName } from './tauriVault'
+import { writeVaultFile, getActiveVaultName, getLastSyncError } from './tauriVault'
 
 type Screen = 'claims' | 'audit' | 'storage' | 'merge'
 
@@ -26,6 +26,19 @@ export default function App() {
   const [unlocked, setUnlocked] = useState<UnlockedState | null>(null)
   const [screen, setScreen] = useState<Screen>('claims')
   const [lockError, setLockError] = useState<string | null>(null)
+  const [syncWarning, setSyncWarning] = useState<string | null>(null)
+
+  // Surface mirror failures (drive unplugged, conflict, owner mismatch) outside the Storage screen.
+  useEffect(() => {
+    if (!unlocked) { setSyncWarning(null); return }
+    const tick = () => {
+      const e = getLastSyncError()
+      setSyncWarning(e ? `External storage not in sync (${e.code}). Open the Storage tab.` : null)
+    }
+    tick()
+    const t = setInterval(tick, 2000)
+    return () => clearInterval(t)
+  }, [unlocked])
 
   const handleUnlocked = useCallback((vault: Vault, persisted: PersistedVault) => {
     setUnlocked({ vault, persisted })
@@ -81,6 +94,7 @@ export default function App() {
       </aside>
 
       <main style={styles.main}>
+        {syncWarning && <div style={styles.syncWarning}>{syncWarning}</div>}
         {screen === 'claims' && (
           <Claims vault={unlocked.vault} onVaultChanged={
             (v, p) => setUnlocked({ vault: v, persisted: p })
@@ -90,7 +104,14 @@ export default function App() {
           <Audit vault={unlocked.vault} />
         )}
         {screen === 'storage' && (
-          <Storage vault={unlocked.vault} />
+          <Storage
+            vault={unlocked.vault}
+            onVaultReplaced={(v, p) => {
+              const old = unlocked.vault
+              setUnlocked({ vault: v, persisted: p })
+              void old.discard().catch(() => { /* best effort */ })
+            }}
+          />
         )}
         {screen === 'merge' && (
           <Merge
@@ -173,6 +194,15 @@ const styles = {
     color: '#f87171',
     fontSize: 11,
     marginTop: 4,
+  } as React.CSSProperties,
+  syncWarning: {
+    background: '#422006',
+    border: '1px solid #f59e0b',
+    borderRadius: 6,
+    color: '#fbbf24',
+    fontSize: 12,
+    marginBottom: 16,
+    padding: '8px 12px',
   } as React.CSSProperties,
   main: {
     flex: 1,

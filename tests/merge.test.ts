@@ -131,3 +131,71 @@ test('merge: re-imported claim after delete survives merge', async () => {
   const merged = await Vault.open(await mergeVaults(l, r, PW), PW)
   assert.equal(merged.listClaims().some(c => c.id === saved.id), true)
 })
+
+test('merge: revived claim survives a copy that still has the older tombstone', async () => {
+  let saved: any
+  const b = await base(v => { saved = v.addClaim(claim('Ann')) })
+  const del = await edit(b, v => { v.deleteClaim(saved.id) })
+  const revived = await edit(del, v => { v.importClaim(saved) })
+  const once = await mergeVaults(revived, del, PW)
+  assert.equal((await Vault.open(once, PW)).listClaims().some(c => c.id === saved.id), true)
+  const twice = await mergeVaults(once, del, PW)
+  assert.equal((await Vault.open(twice, PW)).listClaims().some(c => c.id === saved.id), true)
+})
+
+test('merge: remote-only audit entries are preserved and chain verifies', async () => {
+  const b = await base(() => {})
+  const l = await edit(b, v => { v.addClaim(claim('L')) })
+  const r = await edit(b, v => { v.addClaim(claim('R')) })
+  const merged = await Vault.open(await mergeVaults(l, r, PW), PW)
+  const log = merged.getAuditLog()
+  const entry: any = log.find(e => e.action === 'merge')
+  assert.ok(entry.detail.mergedEntries.some((e: any) => e.action === 'claim-added'))
+  assert.equal(verifyChain(log).valid, true)
+})
+
+test('repeat merge does not re-embed remote audit entries', async () => {
+  const b = await base(() => {})
+  const l = await edit(b, v => { v.addClaim(claim('L')) })
+  const r = await edit(b, v => { v.addClaim(claim('R')) })
+  const first = await mergeVaults(l, r, PW)
+  const second = await mergeVaults(first, r, PW)
+  const embedded = (p: PersistedVault) => edit(p, () => {}).then(async q => {
+    const v = await Vault.open(q, PW)
+    const n = v.getAuditLog().filter(e => e.action === 'merge')
+      .reduce((s, e) => s + ((e.detail as any).mergedEntries?.length ?? 0), 0)
+    await v.discard()
+    return n
+  })
+  const n1 = await embedded(first)
+  const n2 = await embedded(second)
+  assert.ok(n1 > 0)
+  // Only the throw-away remote's own unlock entry may be new; earlier entries are not re-embedded.
+  assert.ok(n2 <= n1 + 1, `embedded ${n2} vs ${n1}`)
+})
+
+test('merge keeps the later tombstone when both sides deleted a claim', async () => {
+  let id = ''
+  const b = await base(v => { id = v.addClaim(claim('X')).id })
+  const l = await edit(b, v => { v.deleteClaim(id) })
+  await sleep(5)
+  const r = await edit(b, v => { v.deleteClaim(id) })
+  const m = await mergeVaults(l, r, PW)
+  const v = await Vault.open(m, PW)
+  assert.equal(v.listClaims().some(c => c.id === id), false)
+  await v.discard()
+})
+
+test('merge: repeated round trips do not nest merge entries or add phantom unlocks', async () => {
+  const b = await base(v => { v.addClaim(claim('x')) })
+  let a = await edit(b, v => { v.addClaim(claim('A')) })
+  let c = await edit(b, v => { v.addClaim(claim('C')) })
+  for (let i = 0; i < 4; i++) {
+    a = (await mergeVaultsWithSummary(a, c, PW)).vault
+    c = (await mergeVaultsWithSummary(c, a, PW)).vault
+  }
+  const log = (await Vault.open(a, PW)).getAuditLog()
+  const depth = (e: any): number => e.action === 'merge' && e.detail?.mergedEntries?.length
+    ? 1 + Math.max(...e.detail.mergedEntries.map(depth)) : 0
+  assert.ok(Math.max(...log.map(depth)) <= 2)
+})
