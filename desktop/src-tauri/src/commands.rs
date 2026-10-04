@@ -108,6 +108,30 @@ pub fn get_storage_path() -> Result<Option<String>, String> {
     Ok(v.get("path").and_then(|p| p.as_str()).filter(|p| !p.is_empty()).map(String::from))
 }
 
+/// True when `p` is (or would be created) inside `dir`. Rejects `..` components and resolves symlinks
+/// on the deepest existing ancestor, so lexical tricks cannot bypass the check.
+fn path_is_inside(p: &std::path::Path, dir: &std::path::Path) -> bool {
+    use std::path::Component;
+    if p.components().any(|c| c == Component::ParentDir) {
+        return true;
+    }
+    let canon_dir = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let mut probe = p.to_path_buf();
+    let mut tail = std::path::PathBuf::new();
+    loop {
+        if let Ok(c) = fs::canonicalize(&probe) {
+            return c.join(&tail).starts_with(&canon_dir);
+        }
+        match (probe.file_name().map(|n| n.to_owned()), probe.parent().map(|x| x.to_path_buf())) {
+            (Some(name), Some(parent)) => {
+                tail = std::path::PathBuf::from(name).join(&tail);
+                probe = parent;
+            }
+            _ => return p.starts_with(dir),
+        }
+    }
+}
+
 /// Set (or clear, with null) the external storage path.
 #[tauri::command]
 pub fn set_storage_path(path: Option<String>) -> Result<(), String> {
@@ -117,8 +141,16 @@ pub fn set_storage_path(path: Option<String>) -> Result<(), String> {
             if !std::path::Path::new(p).is_absolute() {
                 return Err("NOT_CONFIGURED: storage path must be absolute".to_string());
             }
-            fs::create_dir_all(vault_dir()?).map_err(|e| format!("Failed to create vault dir: {e}"))?;
-            fs::write(&cfg, serde_json::json!({ "path": p }).to_string())
+            let dir = vault_dir()?;
+            // The app's own vault directory holds vault.json and the storage config; mirroring into it
+            // would overwrite them.
+            if path_is_inside(std::path::Path::new(p), &dir) {
+                return Err("NOT_CONFIGURED: storage path must be outside the app's vault directory".to_string());
+            }
+            fs::create_dir_all(&dir).map_err(|e| format!("Failed to create vault dir: {e}"))?;
+            let tmp = cfg.with_extension("json.tmp");
+            fs::write(&tmp, serde_json::json!({ "path": p }).to_string())
+                .and_then(|_| fs::rename(&tmp, &cfg))
                 .map_err(|e| format!("Failed to save storage config: {e}"))
         }
         None => match fs::remove_file(&cfg) {
@@ -190,6 +222,11 @@ pub fn write_external_vault(path: String, blob: String, overwrite_invalid: Optio
         }
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        // Non-UTF-8 content is not a vault; an explicit overwrite must still be able to replace it.
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData && overwrite_invalid == Some(true) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+            return Err("CORRUPT: refusing to overwrite a file that is not a sealed vault".to_string());
+        }
         Err(e) => return Err(external_io_error(&target, &e)),
     }
     // Unique tmp name, created exclusively (never follows a planted file/symlink), owner-only.

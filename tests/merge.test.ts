@@ -208,3 +208,15 @@ test('importClaim preserves the source updatedAt', async () => {
   } as never)
   assert.equal(v.listClaims().find(c => c.id === 'c1')!.updatedAt, '2020-02-01T00:00:00.000Z')
 })
+
+test('merge: timestamps compare by instant, not string order', async () => {
+  const b = await base(() => {})
+  const mk = (value: string, updatedAt: string) => ({
+    id: 'c1', ownerId: 'x', type: 'name', value, source: 'self-attested' as const, verification: 'self' as const,
+    expiresAt: null, issuerDid: null, issuedAt: '2024-01-01T00:00:00Z', updatedAt,
+  })
+  const l = await edit(b, v => v.importClaim(mk('older', '2024-05-01T10:00:00Z')))
+  const r = await edit(b, v => v.importClaim(mk('newer', '2024-05-01T10:00:00.500Z')))
+  const { vault } = await mergeVaultsWithSummary(l, r, PW)
+  assert.equal((await Vault.open(vault, PW)).getClaim('c1').value, 'newer')
+})

@@ -36,6 +36,7 @@ import {
 import type { CredentialValue } from '../src/form-filler'
 import { Vault } from '../src/vault'
 import { parseVaultFileText } from '../src/vault-file'
+import { mergeOrImport } from '../src/merge'
 import type { PersistedVault } from '../src/vault'
 import { generateMnemonicBundle, restoreFromMnemonic, verifyMnemonicCommitment } from '../src/recovery'
 import { didFromSeed } from '../src/did'
@@ -581,20 +582,18 @@ async function handleMessage(
 
     try {
       const other = await Vault.open(otherBlob, message.passphrase)
-      const otherClaims = other.listClaims()
-      other.discard().catch(() => { /* best effort */ })
-
       let added = 0
-      for (const claim of otherClaims) {
-        const before = session.vault.listClaims().length
-        session.vault.importClaim(claim)
-        if (session.vault.listClaims().length > before) added++
+      let note = ''
+      try {
+        ;({ added, note } = mergeOrImport(session.vault, other))
+      } finally {
+        other.discard().catch(() => { /* best effort */ })
       }
 
       const blob = await session.vault.seal()
       await saveVaultBlob(blob)
 
-      sendResponse({ type: 'MERGE_RESULT', ok: true, added })
+      sendResponse({ type: 'MERGE_RESULT', ok: true, added, note })
     } catch (err) {
       sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: String(err) })
     }
@@ -626,20 +625,9 @@ async function handleMessage(
 
     try {
       if (session) {
-        const before = session.vault.listClaims().length
-        let added = 0
-        try {
-          // Same owner: a diverged copy of this vault; merge honours tombstones and updatedAt.
-          const summary = session.vault.mergeFrom(other)
-          added = summary.onlyRemote + summary.remoteWins
-        } catch (mergeErr) {
-          if (!(mergeErr instanceof Error && /different owners/.test(mergeErr.message))) throw mergeErr
-          // Different owner: just bring the claims across.
-          for (const claim of other.listClaims()) session.vault.importClaim(claim)
-          added = Math.max(0, session.vault.listClaims().length - before)
-        }
+        const { added, note } = mergeOrImport(session.vault, other)
         await saveVaultBlob(await session.vault.seal())
-        sendResponse({ type: 'MERGE_RESULT', ok: true, added })
+        sendResponse({ type: 'MERGE_RESULT', ok: true, added, note })
       } else {
         // Locked: only fill an empty browser slot — never overwrite an existing vault.
         if (await useNativeHost()) {

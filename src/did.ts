@@ -105,7 +105,7 @@ export interface RawVC {
   issuer: string | { id: string }
   issuanceDate: string
   expirationDate?: string
-  credentialSubject: Record<string, unknown>
+  credentialSubject: Record<string, unknown> | Array<Record<string, unknown>>
   proof?: VCProof
 }
 
@@ -155,14 +155,11 @@ export async function verifyVCProof(vc: RawVC): Promise<boolean> {
   try {
     publicKey = resolveDID(issuerDid)
   } catch {
-    // verificationMethod may differ from issuerDid; try it
-    try {
-      const vmDid = proof.verificationMethod.split('#')[0]
-      publicKey = resolveDID(vmDid)
-    } catch {
-      return false
-    }
+    // Issuer not resolvable: never fall back to a key named by the proof itself (forgeable).
+    return false
   }
+  if (typeof proof.proofValue !== 'string') return false
+  if (typeof proof.verificationMethod !== 'string' || proof.verificationMethod.split('#')[0] !== issuerDid) return false
 
   // Build the document to verify: VC without proof field
   const docWithoutProof = { ...vc, proof: undefined } as Record<string, unknown>
@@ -219,10 +216,12 @@ export async function importVC(vc: RawVC): Promise<ImportedClaimData[]> {
   const issuerDid = typeof vc.issuer === 'string' ? vc.issuer : vc.issuer.id
   const expiresAt = vc.expirationDate ?? null
 
-  const proofVerified = vc.proof ? await verifyVCProof(vc) : false
+  const expired = expiresAt !== null && !(Date.parse(expiresAt) > Date.now())
+  const proofVerified = vc.proof && !expired ? await verifyVCProof(vc) : false
   const verification: 'verified' | 'none' = proofVerified ? 'verified' : 'none'
 
-  return Object.entries(vc.credentialSubject)
+  const subjects = Array.isArray(vc.credentialSubject) ? vc.credentialSubject : [vc.credentialSubject]
+  return subjects.flatMap(s => Object.entries(s))
     .filter(([key]) => key !== 'id')  // skip the subject DID field
     .map(([key, value]) => ({
       type: `vc:${key}`,

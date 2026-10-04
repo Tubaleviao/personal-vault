@@ -229,7 +229,7 @@ function showMergePanel() {
 
       const mergeRes = await send<BackgroundToPopup>({
         type: 'MERGE_VAULT', source: v.source, name: v.name, passphrase,
-      }) as { type: 'MERGE_RESULT'; ok: boolean; added: number; error?: string } | null
+      }) as { type: 'MERGE_RESULT'; ok: boolean; added: number; note?: string; error?: string } | null
 
       input.value = ''
       btn.removeAttribute('disabled')
@@ -254,12 +254,12 @@ function showMergePanel() {
 
       if (!delRes?.ok) {
         status.style.color = '#fbbf24'
-        const addedText = mergeRes.added > 0 ? `Merged ${mergeRes.added} claim${mergeRes.added === 1 ? '' : 's'}` : 'No new claims'
+        const addedText = (mergeRes.added > 0 ? `Merged ${mergeRes.added} claim${mergeRes.added === 1 ? '' : 's'}` : 'No new claims') + (mergeRes.note ? ` (${mergeRes.note})` : '')
         status.textContent = `${addedText} — could not delete source: ${delRes?.error ?? 'unknown error'}`
         return
       }
 
-      const addedText = mergeRes.added > 0 ? `Merged ${mergeRes.added} claim${mergeRes.added === 1 ? '' : 's'}` : 'No new claims'
+      const addedText = (mergeRes.added > 0 ? `Merged ${mergeRes.added} claim${mergeRes.added === 1 ? '' : 's'}` : 'No new claims') + (mergeRes.note ? ` (${mergeRes.note})` : '')
       status.style.color = '#22c55e'
       status.textContent = `${addedText} — source vault deleted`
       _mergeableVaults = _mergeableVaults.filter(x => !(x.source === v.source && x.name === v.name))
@@ -569,7 +569,7 @@ function mountFileImport(container: HTMLElement, unlocked: boolean) {
     try {
       const text = await f.text()
       const res = await send<BackgroundToPopup>({ type: 'IMPORT_VAULT_FILE', text, passphrase: pass.value }) as
-        { type: 'MERGE_RESULT'; ok: boolean; added: number; error?: string }
+        { type: 'MERGE_RESULT'; ok: boolean; added: number; note?: string; error?: string }
         | { type: 'IMPORT_FILE_RESULT'; ok: boolean; error?: string } | null
       pass.value = ''
       if (!res?.ok) {
@@ -579,7 +579,7 @@ function mountFileImport(container: HTMLElement, unlocked: boolean) {
       }
       status.style.color = '#22c55e'
       if (res.type === 'MERGE_RESULT') {
-        status.textContent = `Imported ${res.added} new claim${res.added === 1 ? '' : 's'}`
+        status.textContent = `Imported ${res.added} new claim${res.added === 1 ? '' : 's'}${res.note ? ` (${res.note})` : ''}`
       } else {
         await init()
       }

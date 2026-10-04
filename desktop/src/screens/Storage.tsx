@@ -180,12 +180,26 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
     setStatus({ ok: true, msg: doneMsg })
   }
 
+  // The forced write below replaces storage; refuse if it changed since the divergence was detected.
+  const assertStorageUnchanged = async () => {
+    if (!divergence) return
+    const fresh = await readStorageVault(saved)
+    if (JSON.stringify(fresh) !== JSON.stringify(divergence.remote)) {
+      clearDivergence()
+      throw new Error('The storage copy changed since it was read. Run "Test read" again before resolving.')
+    }
+  }
+
   const handleMergeAndSave = async () => {
-    if (!preview) return
+    if (!preview || !divergence) return
     setBusy(true)
     setStatus(null)
     try {
-      await applyResolution(preview.merged, 'Merged and saved to both the local copy and storage.', true)
+      await assertStorageUnchanged()
+      // Re-merge from a fresh seal: edits made since the preview must not be lost.
+      const sealedLocal = await vault.seal()
+      const { vault: merged } = await mergeCopies(sealedLocal, divergence.remote, passphrase)
+      await applyResolution(merged, 'Merged and saved to both the local copy and storage.', true)
     } catch (err) {
       setStatus({ ok: false, msg: describe(err) })
     } finally {
@@ -200,6 +214,7 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
     setBusy(true)
     setStatus(null)
     try {
+      if (which === 'local') await assertStorageUnchanged()
       const persisted = which === 'local' ? await vault.seal() : divergence.remote
       await applyResolution(persisted, which === 'local' ? 'Kept local copy; storage updated.' : 'Kept storage copy; local copy replaced.', which === 'local')
     } catch (err) {

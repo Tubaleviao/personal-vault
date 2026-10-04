@@ -54,7 +54,7 @@ function collect(pairs: Iterable<[string, unknown]>): ImportedAutofillClaim[] {
  * Throws on malformed JSON or unexpected shape.
  */
 export function parseTakeoutAutofill(text: string): ImportedAutofillClaim[] {
-  const data = JSON.parse(text) as { Autofill?: unknown }
+  const data = JSON.parse(text.replace(/^\uFEFF/, '')) as { Autofill?: unknown }
   if (!data || typeof data !== 'object' || !Array.isArray(data.Autofill)) {
     throw new Error('Not a Takeout Autofill.json file')
   }
@@ -93,17 +93,19 @@ export function parseCsv(text: string, delimiter = ','): string[][] {
 
 /**
  * Parse a CSV with a header row whose column names are autofill fields
- * (e.g. `First Name,Last Name,Email,Phone`). Uses the first data row that
- * supplies each claim type.
+ * (e.g. `First Name,Last Name,Email,Phone`). Uses the first data row only.
  */
 export function parseAutofillCsv(text: string): ImportedAutofillClaim[] {
   const body = text.replace(/^\uFEFF/, '')
   // Locales such as pt-BR export with ';' — pick it when the header line has no commas.
-  const headerLine = body.split(/\r?\n/, 1)[0]
-  const delimiter = !headerLine.includes(',') && headerLine.includes(';') ? ';' : ','
+  const headerLine = body.split(/\r\n|\r|\n/, 1)[0]
+  // Count delimiters outside quotes so a comma inside a quoted column name does not decide.
+  const unquoted = headerLine.replace(/"[^"]*"/g, '')
+  const delimiter = !unquoted.includes(',') && unquoted.includes(';') ? ';' : ','
   const [header, ...rows] = parseCsv(body, delimiter)
   if (!header) return []
   const pairs: [string, unknown][] = []
-  for (const row of rows) header.forEach((h, i) => pairs.push([h, row[i]]))
+  // One row only: mixing columns from different rows would combine different people's data.
+  for (const row of rows.slice(0, 1)) header.forEach((h, i) => pairs.push([h, row[i]]))
   return collect(pairs)
 }
