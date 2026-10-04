@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Vault as VaultClass } from '@vault/vault'
+import { mergeVaultsWithSummary as mergeCopies } from '@vault/merge'
 import type { Vault, PersistedVault, MergeSummary } from '@vault/vault'
 import {
   getStoragePath, setStoragePath, getSyncBase, readStorageVault, getLastSyncError, compareCopies,
@@ -26,19 +27,6 @@ type Status = { ok: boolean; msg: string } | null
 
 function describe(err: unknown): string {
   return err instanceof StorageError ? err.message : err instanceof Error ? err.message : String(err)
-}
-
-// Same as storage.ts mergeVaultsWithSummary, which can't be bundled here (it imports node:fs).
-async function mergeCopies(local: PersistedVault, remote: PersistedVault, passphrase: string) {
-  const a = await VaultClass.open(local, passphrase)
-  let b: Vault | undefined
-  try {
-    b = await VaultClass.open(remote, passphrase)
-    const summary = a.mergeFrom(b)
-    return { vault: await a.seal(), summary }
-  } finally {
-    try { await b?.discard() } finally { await a.discard() }
-  }
 }
 
 export default function Storage({ vault, onVaultReplaced }: Props) {

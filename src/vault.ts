@@ -184,7 +184,13 @@ export class Vault {
 
   // ── Factory: open an existing vault ───────────────────────────────────────
 
-  static async open(persisted: PersistedVault, passphrase: string): Promise<Vault> {
+  /**
+   * `recordUnlock: false` skips the `vault-unlocked` audit entry; used for throw-away
+   * instances (merge sources) so no phantom event is attributed to the other copy.
+   */
+  static async open(
+    persisted: PersistedVault, passphrase: string, opts: { recordUnlock?: boolean } = {},
+  ): Promise<Vault> {
     const salt = base64urlToBytes(persisted.header.salt)
     // Fall back to legacy N for vaults created before scryptN was stored in the header.
     // deriveKey enforces SCRYPT_N_MIN <= N <= SCRYPT_N_MAX, rejecting crafted headers.
@@ -214,7 +220,7 @@ export class Vault {
     const state: VaultState = JSON.parse(plaintext) as VaultState
 
     const vault = new Vault(state, masterKey, { ...persisted.header })
-    vault._appendAudit('vault-unlocked', 'owner', null, null)
+    if (opts.recordUnlock !== false) vault._appendAudit('vault-unlocked', 'owner', null, null)
     return vault
   }
 
@@ -397,9 +403,18 @@ export class Vault {
         if (JSON.stringify(sortKeys({ ...l!, ownerId: '' })) === JSON.stringify(sortKeys({ ...r!, ownerId: '' }))) {
           summary.identical++
         } else {
-          // Same timestamp, different content (e.g. legacy edit without updatedAt): keep local, flag it.
-          summary.localWins++
-          summary.overwritten.push({ claimId: id, claimType: l!.type, kept: 'local' })
+          // Same timestamp, different content (e.g. legacy edit without updatedAt): pick the
+          // larger canonical form so both sides choose the same winner whatever the merge direction.
+          const lj = JSON.stringify(sortKeys({ ...l!, ownerId: '' }))
+          const rj = JSON.stringify(sortKeys({ ...r!, ownerId: '' }))
+          if (rj > lj) {
+            local.claims[id] = { ...r!, ownerId: local.owner.id }
+            summary.remoteWins++
+            summary.overwritten.push({ claimId: id, claimType: r!.type, kept: 'remote' })
+          } else {
+            summary.localWins++
+            summary.overwritten.push({ claimId: id, claimType: l!.type, kept: 'local' })
+          }
         }
       } else if (rt > lt) {
         local.claims[id] = { ...r!, ownerId: local.owner.id }
@@ -435,7 +450,14 @@ export class Vault {
       if (e.action === 'merge' && Array.isArray(nested)) nested.forEach(collect)
     }
     local.auditLog.forEach(collect)
-    const remoteOnly = remote.auditLog.filter(e => !localIds.has(e.id))
+    // An embedded merge entry from the other side drops nested entries this side already has, so
+    // repeated round trips do not nest earlier merge entries (and their copies) ever deeper.
+    const slim = (e: AuditEntry): AuditEntry => {
+      const d = e.detail as { mergedEntries?: AuditEntry[] } | null
+      if (e.action !== 'merge' || !d || !Array.isArray(d.mergedEntries)) return e
+      return { ...e, detail: { ...d, mergedEntries: d.mergedEntries.filter(n => !localIds.has(n.id)).map(slim) } }
+    }
+    const remoteOnly = remote.auditLog.filter(e => !localIds.has(e.id)).map(slim)
     this._header.sequenceNumber = Math.max(
       this._header.sequenceNumber ?? 0, other._header.sequenceNumber ?? 0,
     )

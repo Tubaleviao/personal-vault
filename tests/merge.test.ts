@@ -185,3 +185,17 @@ test('merge keeps the later tombstone when both sides deleted a claim', async ()
   assert.equal(v.listClaims().some(c => c.id === id), false)
   await v.discard()
 })
+
+test('merge: repeated round trips do not nest merge entries or add phantom unlocks', async () => {
+  const b = await base(v => { v.addClaim(claim('x')) })
+  let a = await edit(b, v => { v.addClaim(claim('A')) })
+  let c = await edit(b, v => { v.addClaim(claim('C')) })
+  for (let i = 0; i < 4; i++) {
+    a = (await mergeVaultsWithSummary(a, c, PW)).vault
+    c = (await mergeVaultsWithSummary(c, a, PW)).vault
+  }
+  const log = (await Vault.open(a, PW)).getAuditLog()
+  const depth = (e: any): number => e.action === 'merge' && e.detail?.mergedEntries?.length
+    ? 1 + Math.max(...e.detail.mergedEntries.map(depth)) : 0
+  assert.ok(Math.max(...log.map(depth)) <= 2)
+})

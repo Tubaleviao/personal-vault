@@ -9,9 +9,11 @@
 import { promises as fs } from 'fs'
 import * as nodePath from 'path'
 import { randomBytes } from 'crypto'
-import { Vault } from './vault'
+import { mergeVaultsWithSummary } from './merge'
 import type { PersistedVault, MergeSummary } from './vault'
 import { isPersistedVault } from './vault-file'
+
+export { mergeVaultsWithSummary }
 
 export interface StorageConfig {
   path: string
@@ -172,25 +174,6 @@ export function detectDivergence(local: PersistedVault, remote: PersistedVault, 
     return l === r && local.encrypted.nonce !== remote.encrypted.nonce
   }
   return l > baseSequence && r > baseSequence
-}
-
-/**
- * Open both copies with `passphrase`, merge remote into local (see
- * Vault.mergeFrom for the conflict policy) and return the sealed result with
- * a summary for the UI. Throws if the passphrase is wrong or owners differ.
- */
-export async function mergeVaultsWithSummary(
-  local: PersistedVault, remote: PersistedVault, passphrase: string,
-): Promise<{ vault: PersistedVault; summary: MergeSummary }> {
-  const a = await Vault.open(local, passphrase)
-  let b: Vault | undefined
-  try {
-    b = await Vault.open(remote, passphrase)
-    const summary = a.mergeFrom(b)
-    return { vault: await a.seal(), summary }
-  } finally {
-    try { await b?.discard() } finally { await a.discard() }
-  }
 }
 
 export async function mergeVaults(
