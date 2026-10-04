@@ -58,7 +58,8 @@ fn external_io_error(path: &std::path::Path, err: &std::io::Error) -> String {
     let code = match err.kind() {
         ErrorKind::NotFound => if missing_parent() { "DRIVE_MISSING" } else { "NOT_FOUND" },
         ErrorKind::PermissionDenied => "PERMISSION_DENIED",
-        // Raw errno values below are Unix-specific; Windows codes are covered by ErrorKind.
+        ErrorKind::StorageFull => "DRIVE_FULL",
+        // Raw errno values below are Unix-specific; other Windows codes fall through to IO.
         _ if cfg!(not(unix)) => "IO",
         _ => match os {
             Some(28) => "DRIVE_FULL",                                  // ENOSPC
@@ -73,6 +74,14 @@ fn external_io_error(path: &std::path::Path, err: &std::io::Error) -> String {
         },
     };
     format!("{code}: {err}")
+}
+
+/// Shape check on the JSON text of a sealed vault (header.ownerId + encrypted blob).
+/// Keeps the external-storage commands from reading or overwriting arbitrary files.
+fn looks_like_vault(text: &str) -> bool {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return false };
+    v.get("header").and_then(|h| h.get("ownerId")).map_or(false, |o| o.is_string())
+        && v.get("encrypted").map_or(false, |e| e.is_object())
 }
 
 fn is_quota_errno(n: i32) -> bool {
@@ -124,7 +133,11 @@ pub fn read_external_vault(path: String) -> Result<String, String> {
         return Err("NOT_CONFIGURED: path does not match the configured storage path".to_string());
     }
     let p = std::path::Path::new(&path);
-    fs::read_to_string(p).map_err(|e| external_io_error(p, &e))
+    let text = fs::read_to_string(p).map_err(|e| external_io_error(p, &e))?;
+    if !looks_like_vault(&text) {
+        return Err("CORRUPT: file is not a sealed vault".to_string());
+    }
+    Ok(text)
 }
 
 /// Atomically write the vault blob to the external storage path (tmp + rename).
@@ -138,6 +151,9 @@ pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
     // arbitrary file to overwrite.
     if get_storage_path()?.as_deref() != Some(path.as_str()) {
         return Err("NOT_CONFIGURED: path does not match the configured storage path".to_string());
+    }
+    if !looks_like_vault(&blob) {
+        return Err("CORRUPT: refusing to write data that is not a sealed vault".to_string());
     }
     let requested = std::path::Path::new(&path);
     let target = match fs::canonicalize(requested) {
@@ -163,6 +179,15 @@ pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
         }
         Err(e) => return Err(external_io_error(requested, &e)),
     };
+    // Never replace an existing file that is not a vault (the configured path may be wrong).
+    match fs::read_to_string(&target) {
+        Ok(existing) if !looks_like_vault(&existing) => {
+            return Err("CORRUPT: refusing to overwrite a file that is not a sealed vault".to_string());
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(external_io_error(&target, &e)),
+    }
     // Unique tmp name, created exclusively (never follows a planted file/symlink), owner-only.
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -89,6 +89,8 @@ export async function getStoragePath(): Promise<string | null> {
 export async function setStoragePath(path: string | null): Promise<void> {
   try {
     await invoke<void>('set_storage_path', { path })
+    // The sync base describes the previous location's shared history; drop it.
+    try { localStorage.removeItem(baseKey()) } catch { /* storage unavailable */ }
   } catch (err) {
     throw toStorageError(err)
   }
@@ -230,6 +232,8 @@ export async function readVaultFileSynced(): Promise<SyncedRead> {
     // A file that doesn't exist yet is normal on first sync; seed it below.
     _lastSyncError = e.code === 'NOT_FOUND' && local ? null : e
     if (e.code !== 'NOT_FOUND' && !local) throw e
+    // Don't hit a dead mount a second time via the mirror.
+    if (e.code !== 'NOT_FOUND') return { persisted: local, local, fromStorage: false }
   }
   if (local && remote && local.header.ownerId !== remote.header.ownerId) {
     _lastSyncError = new StorageError('OWNER_MISMATCH')
