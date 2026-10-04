@@ -35,6 +35,11 @@ export function autofillFieldToClaimType(field: string): string | null {
   return FIELD_TO_CLAIM.get(normaliseField(field)) ?? null
 }
 
+/** Build an imported, unverified claim. */
+export function makeImportedClaim(type: string, value: string): ImportedAutofillClaim {
+  return { type, value, source: 'imported', verification: 'none', expiresAt: null, issuerDid: null }
+}
+
 function collect(pairs: Iterable<[string, unknown]>): ImportedAutofillClaim[] {
   // Keep the first value seen per claim type (Takeout lists most-used first).
   const seen = new Map<string, ImportedAutofillClaim>()
@@ -44,7 +49,7 @@ function collect(pairs: Iterable<[string, unknown]>): ImportedAutofillClaim[] {
     if (!value) continue
     const type = autofillFieldToClaimType(field)
     if (!type || seen.has(type)) continue
-    seen.set(type, { type, value, source: 'imported', verification: 'none', expiresAt: null, issuerDid: null })
+    seen.set(type, makeImportedClaim(type, value))
   }
   return [...seen.values()]
 }
