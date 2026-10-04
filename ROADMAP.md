@@ -171,7 +171,7 @@ Once the desktop app is running, the browser extension can delegate vault I/O to
 
 ---
 
-## Phase 3.5.3 — Diverged Vault Merge
+## Phase 3.5.3 — Diverged Vault Merge ✅
 
 When a vault is used on two independent copies (e.g. a flash drive taken on a trip + a cloud copy that was also touched at home), the two histories diverge from a common ancestor and neither is strictly "newer". A simple `sequenceNumber` comparison (Phase 3.5.2) can detect the divergence, but cannot resolve it. This step adds the merge logic.
 
@@ -220,9 +220,9 @@ A merge is needed when, at sync time, **both** the local copy and the external c
 
 - [x] `detectDivergence()` in `src/storage.ts`
 - [x] `mergeVaults()` in `src/storage.ts` — claims union, revocation-wins for grants, `merge` audit entry
-- [ ] Desktop: merge banner and conflict summary in the Storage screen
-- [ ] Desktop: "Merge and save" action — write merged vault to both paths
-- [ ] Desktop: "Keep local" / "Keep external" escape hatches
+- [x] Desktop: merge banner and conflict summary in the Storage screen (`Storage.tsx`; passphrase required to preview)
+- [x] Desktop: "Merge and save" action — write merged vault to both paths
+- [x] Desktop: "Keep local" / "Keep external" escape hatches
 - [x] Tests: diverged-vault fixture pairs covering identical, conflict, delete-vs-modify, and revocation cases
 
 ---

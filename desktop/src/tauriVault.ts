@@ -32,6 +32,11 @@ export async function readVaultFile(): Promise<PersistedVault | null> {
   }
 }
 
+/** Write the local working copy only, without mirroring to storage (used by merge, which mirrors with force). */
+export async function writeLocalVaultFile(vault: PersistedVault): Promise<void> {
+  await invoke<void>('write_vault_file', { blob: JSON.stringify(vault), name: _activeVaultName })
+}
+
 export async function writeVaultFile(vault: PersistedVault): Promise<void> {
   await invoke<void>('write_vault_file', { blob: JSON.stringify(vault), name: _activeVaultName })
   await mirrorToStorage(vault)

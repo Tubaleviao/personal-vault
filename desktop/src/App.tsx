@@ -90,7 +90,14 @@ export default function App() {
           <Audit vault={unlocked.vault} />
         )}
         {screen === 'storage' && (
-          <Storage vault={unlocked.vault} />
+          <Storage
+            vault={unlocked.vault}
+            onVaultReplaced={(v, p) => {
+              const old = unlocked.vault
+              setUnlocked({ vault: v, persisted: p })
+              void old.discard().catch(() => { /* best effort */ })
+            }}
+          />
         )}
         {screen === 'merge' && (
           <Merge
