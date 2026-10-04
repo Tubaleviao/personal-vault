@@ -190,7 +190,7 @@ src/form-filler.ts         — Vault-side library shared by the extension.
 | Phase 3, Step 3.2.5 | Audit log screen data: hash chain, tamper detection, display format | `audit.ts` |
 | Phase 2, Steps 2.4 / Phase 3, Step 3.2.7 | Grant consent layer: create, sign, validate, revoke | `consent.ts` |
 | Phase 3, Step 3.2.4 | Browser extension: form-filler with per-site/per-field approval, credential capture, popup, MV3 service worker | `extension/`, `src/form-filler.ts` |
-| Phase 3, Step 3.2.6 | ~~Sync relay (Cloudflare Worker + KV)~~ — superseded by Phase 3.5.2 | `relay/worker.ts`, `src/relay.ts` (to be removed) |
+| Phase 3, Step 3.2.6 | ~~Sync relay (Cloudflare Worker + KV)~~ — superseded by Phase 3.5.2 | `relay/worker.ts`, `src/relay.ts` |
 | Phase 3, Step 3.3 | Security hygiene: STRIDE threat model, CI audit, scrypt N upgrade to 2^16 | `THREAT_MODEL.md`, `.github/workflows/ci.yml` |
 | Phase 3.5 | Desktop app: Tauri v2 — unlock/claims/audit/sync screens, native messaging host auto-install | `desktop/` |
 

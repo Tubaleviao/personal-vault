@@ -76,40 +76,6 @@ export interface MsgUserDenied {
   origin: string
 }
 
-// ── Popup → Background (sync) ─────────────────────────────────────────────────
-
-/** Popup reads the current relay configuration. */
-export interface MsgGetRelayConfig {
-  type: 'GET_RELAY_CONFIG'
-}
-
-/** Popup saves a relay URL (empty string = disable sync). */
-export interface MsgSetRelayConfig {
-  type: 'SET_RELAY_CONFIG'
-  relayUrl: string
-}
-
-/** Popup triggers a manual sync (push or pull). */
-export interface MsgSyncVault {
-  type: 'SYNC_VAULT'
-}
-
-// ── Background → Popup (sync) ─────────────────────────────────────────────────
-
-export interface MsgRelayConfig {
-  type: 'RELAY_CONFIG'
-  relayUrl: string
-  lastSyncedAt: string | null
-}
-
-export interface MsgSyncResult {
-  type: 'SYNC_RESULT'
-  ok: boolean
-  action?: 'pushed' | 'pulled' | 'already-current' | 'first-push'
-  syncedAt?: string
-  error?: string
-}
-
 // ── Popup → Background ────────────────────────────────────────────────────────
 
 /** Popup requests the list of current site approvals. */
@@ -407,9 +373,6 @@ export type PopupToBackground =
   | MsgUnlockVault
   | MsgLockVault
   | MsgCreateVault
-  | MsgGetRelayConfig
-  | MsgSetRelayConfig
-  | MsgSyncVault
   | MsgGetNativeHostStatus
   | MsgGetVaultList
   | MsgSelectVault
@@ -422,8 +385,6 @@ export type BackgroundToPopup =
   | MsgVaultStatus
   | MsgUnlockResult
   | MsgCreateResult
-  | MsgRelayConfig
-  | MsgSyncResult
   | MsgNativeHostStatus
   | MsgVaultList
   | MsgMergeResult
