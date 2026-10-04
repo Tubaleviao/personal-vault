@@ -150,7 +150,7 @@ pub fn read_external_vault(path: String) -> Result<String, String> {
 /// papered over with a local folder). A dangling symlink is followed to its
 /// missing target; if that target's directory is gone the drive is missing.
 #[tauri::command(async)]
-pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
+pub fn write_external_vault(path: String, blob: String, overwrite_invalid: Option<bool>) -> Result<(), String> {
     // Only the user-configured storage path may be written; the webview cannot pick an
     // arbitrary file to overwrite.
     if get_storage_path()?.as_deref() != Some(path.as_str()) {
@@ -185,7 +185,7 @@ pub fn write_external_vault(path: String, blob: String) -> Result<(), String> {
     };
     // Never replace an existing file that is not a vault (the configured path may be wrong).
     match fs::read_to_string(&target) {
-        Ok(existing) if !looks_like_vault(&existing) => {
+        Ok(existing) if !looks_like_vault(&existing) && overwrite_invalid != Some(true) => {
             return Err("CORRUPT: refusing to overwrite a file that is not a sealed vault".to_string());
         }
         Ok(_) => {}

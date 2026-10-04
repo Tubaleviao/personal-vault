@@ -199,7 +199,7 @@ async function mirrorToStorage(vault: PersistedVault, force = false): Promise<vo
         if (cmp !== 'local') throw new StorageError('CONFLICT')
       }
     }
-    await invoke<void>('write_external_vault', { path, blob: JSON.stringify(vault) })
+    await invoke<void>('write_external_vault', { path, blob: JSON.stringify(vault), overwriteInvalid: force })
     setSyncBase(vault)
     _lastSyncError = null
   } catch (err) {

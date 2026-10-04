@@ -149,7 +149,8 @@ export default function Unlock({ onUnlocked }: Props) {
       // The vault is already open, so a failed write must not fall back to the stale copy.
       if (synced.fromStorage && persisted === synced.persisted) {
         try { await adoptStorageCopy(persisted) } catch (adoptErr) {
-          setError(`Unlocked from storage copy, but could not update the local file: ${adoptErr instanceof Error ? adoptErr.message : String(adoptErr)}`)
+          // This screen unmounts on success, so surface the warning outside it.
+          window.alert(`Unlocked from storage copy, but could not update the local file: ${adoptErr instanceof Error ? adoptErr.message : String(adoptErr)}`)
         }
       }
       if (mnemonic.trim()) {

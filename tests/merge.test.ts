@@ -199,3 +199,12 @@ test('merge: repeated round trips do not nest merge entries or add phantom unloc
     ? 1 + Math.max(...e.detail.mergedEntries.map(depth)) : 0
   assert.ok(Math.max(...log.map(depth)) <= 2)
 })
+
+test('importClaim preserves the source updatedAt', async () => {
+  const v = await Vault.create({ passphrase: PW, did: 'did:key:z', mnemonicCommitment: 'm' })
+  v.importClaim({
+    id: 'c1', ownerId: 'x', type: 'name', value: 'A', issuedAt: '2020-01-01T00:00:00.000Z',
+    updatedAt: '2020-02-01T00:00:00.000Z',
+  } as never)
+  assert.equal(v.listClaims().find(c => c.id === 'c1')!.updatedAt, '2020-02-01T00:00:00.000Z')
+})
