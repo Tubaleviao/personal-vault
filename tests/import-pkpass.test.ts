@@ -9,7 +9,8 @@ const pass = JSON.stringify({
   generic: {
     primaryFields: [{ key: 'name', label: 'Member', value: ' Ana Silva ' }],
     secondaryFields: [{ key: 'contact', label: 'Email', value: 'ana@x.co' }, { key: 'seat', value: '12A' }],
-    backFields: [{ key: 'p', label: 'Phone', value: '+55 11 99999-0000' }, { key: 'email', value: 'dup@x.co' }, { key: 'e', value: '' }],
+    auxiliaryFields: [{ key: 'p', label: 'Phone', value: '+55 11 99999-0000' }, { key: 'email', value: 'dup@x.co' }, { key: 'e', value: '' }],
+    backFields: [{ key: 'support', label: 'Phone', value: '+1 800 0000' }, { key: 'email', value: 'support@airline.com' }],
   },
 })
 
@@ -28,6 +29,7 @@ function zip(name: string, data: Buffer, method: 0 | 8): Uint8Array {
 test('pass.json: maps identity fields by key then label, ignores the rest', () => {
   const r = parsePassJson(pass)
   assert.deepEqual(r.map(c => [c.type, c.value]), [
+    ['schema:name', 'Ana Silva'],
     ['schema:email', 'ana@x.co'],
     ['schema:telephone', '+55 11 99999-0000'],
   ])
@@ -41,11 +43,33 @@ test('pass.json: rejects non-pass JSON', () => {
 test('pkpass: reads deflated and stored pass.json', async () => {
   for (const m of [8, 0] as const) {
     const r = await parsePkpass(zip('pass.json', Buffer.from(pass), m))
-    assert.equal(r.length, 2)
+    assert.equal(r.length, 3)
   }
 })
 
 test('pkpass: rejects non-zip and zip without pass.json', async () => {
   await assert.rejects(parsePkpass(new Uint8Array(40)), /not a \.pkpass/i)
   await assert.rejects(parsePkpass(zip('other.json', Buffer.from('{}'), 0)), /not found/)
+})
+
+test('pass.json: ignores backFields and numeric values', () => {
+  const r = parsePassJson(JSON.stringify({
+    formatVersion: 1,
+    generic: { primaryFields: [{ key: 'phone', value: 5511999990000 }], backFields: [{ key: 'email', value: 'support@x.co' }] },
+  }))
+  assert.deepEqual(r, [])
+})
+
+test('pkpass: accepts wrapped folder, rejects bombs and corrupt deflate', async () => {
+  assert.equal((await parsePkpass(zip('My.pass/pass.json', Buffer.from(pass), 8))).length, 3)
+  const big = Buffer.alloc(6 * 1024 * 1024, 0x20)
+  const bomb = zip('pass.json', big, 8)
+  // Lie about the declared size so only the streaming cap can catch it.
+  const dv = new DataView(bomb.buffer, bomb.byteOffset)
+  const cd = bomb.length - 22 - 46 - 'pass.json'.length
+  dv.setUint32(cd + 24, 10, true)
+  await assert.rejects(parsePkpass(bomb), /too large/)
+  const bad = zip('pass.json', Buffer.from(pass), 8)
+  bad[30 + 'pass.json'.length] = 0xff
+  await assert.rejects(parsePkpass(bad), /Corrupt/)
 })
