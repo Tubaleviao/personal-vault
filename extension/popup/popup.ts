@@ -33,10 +33,6 @@ const errorMsg = document.getElementById('error-msg')!
 const approvalList = document.getElementById('approval-list')!
 const noApprovals = document.getElementById('no-approvals')!
 const lockBtn = document.getElementById('lock-btn')!
-const relayUrlInput = document.getElementById('relay-url') as HTMLInputElement
-const saveRelayBtn = document.getElementById('save-relay-btn')!
-const syncBtn = document.getElementById('sync-btn')!
-const syncStatus = document.getElementById('sync-status')!
 const nativeBadge = document.getElementById('native-badge')!
 
 // Vault picker UI
@@ -118,17 +114,6 @@ function renderApprovals(approvals: SiteApproval[]) {
   }
 }
 
-function renderSyncStatus(relayUrl: string, lastSyncedAt: string | null) {
-  relayUrlInput.value = relayUrl
-  if (!relayUrl) {
-    syncStatus.textContent = 'Enter a relay URL to enable sync.'
-    return
-  }
-  syncStatus.textContent = lastSyncedAt
-    ? `Last synced: ${new Date(lastSyncedAt).toLocaleString()}`
-    : 'Never synced.'
-}
-
 function showUnlocked(ownerDid: string, approvals: SiteApproval[], showExport = false) {
   statusDot.classList.add('unlocked')
   didShort.textContent = ownerDid !== 'unknown' ? ownerDid.slice(-8) : ''
@@ -163,39 +148,6 @@ async function revokeApproval(id: string) {
 async function lockVault() {
   await send<BackgroundToPopup>({ type: 'LOCK_VAULT' })
   await init()
-}
-
-async function saveRelayUrl() {
-  const url = relayUrlInput.value.trim()
-  const res = await send<BackgroundToPopup>({ type: 'SET_RELAY_CONFIG', relayUrl: url }) as { type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null
-  if (res) renderSyncStatus(res.relayUrl, res.lastSyncedAt)
-}
-
-async function syncNow() {
-  syncBtn.textContent = 'Syncing…'
-  syncBtn.setAttribute('disabled', 'true')
-  syncStatus.textContent = ''
-
-  const res = await send<BackgroundToPopup>({ type: 'SYNC_VAULT' }) as { type: 'SYNC_RESULT'; ok: boolean; action?: string; syncedAt?: string; error?: string } | null
-
-  syncBtn.textContent = 'Sync now'
-  syncBtn.removeAttribute('disabled')
-
-  if (!res || !res.ok) {
-    syncStatus.textContent = `Error: ${res?.error ?? 'Unknown error'}`
-    syncStatus.style.color = '#f87171'
-    return
-  }
-
-  syncStatus.style.color = '#22c55e'
-  const actionLabel: Record<string, string> = {
-    'pushed': 'Pushed to relay',
-    'pulled': 'Pulled from relay — unlock again to load',
-    'already-current': 'Already up to date',
-    'first-push': 'Registered and pushed',
-  }
-  syncStatus.textContent = (res.action ? actionLabel[res.action] ?? res.action : 'Done') +
-    (res.syncedAt ? ` · ${new Date(res.syncedAt).toLocaleTimeString()}` : '')
 }
 
 // ── Merge panel ───────────────────────────────────────────────────────────────
@@ -320,7 +272,7 @@ function showMergePanel() {
 
 /**
  * Show the unlocked vault view immediately using data already in hand from the
- * unlock/create response, then fill in secondary data (approvals, relay config)
+ * unlock/create response, then fill in secondary data (approvals)
  * with best-effort follow-up messages. Never calls showLocked() — if secondary
  * messages fail because the SW suspended, the vault view stays shown.
  */
@@ -330,15 +282,13 @@ async function transitionToUnlocked(ownerDid: string, activeSource: 'native' | '
 
   // Fetch secondary data with individual error handling so a suspended SW on
   // any one of these doesn't abort the transition.
-  const [approvalsRes, relayRes, vaultListRes, nativeStatusRes] = await Promise.all([
+  const [approvalsRes, vaultListRes, nativeStatusRes] = await Promise.all([
     send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }).catch(() => null) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
-    send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }).catch(() => null) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
     send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }).catch(() => null) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
     send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }).catch(() => null) as Promise<{ type: 'NATIVE_HOST_STATUS'; available: boolean } | null>,
   ])
 
   if (approvalsRes?.type === 'APPROVALS_LIST') renderApprovals(approvalsRes.approvals)
-  if (relayRes?.type === 'RELAY_CONFIG') renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 
   const vaults = (vaultListRes?.type === 'VAULT_LIST' ? vaultListRes.vaults : null) ?? []
   const others = vaults.filter(v => !(v.source === activeSource && (!v.name || v.name === _selectedNativeVaultName)))
@@ -359,9 +309,8 @@ async function init() {
   const statusRes = await send<BackgroundToPopup>({ type: 'GET_VAULT_STATUS' }) as { type: 'VAULT_STATUS'; unlocked: boolean; ownerDid: string | null; activeSource: 'native' | 'local' | null } | null
 
   if (statusRes?.unlocked && statusRes.ownerDid) {
-    const [approvalsRes, relayRes, vaultListRes, nativeStatusRes] = await Promise.all([
+    const [approvalsRes, vaultListRes, nativeStatusRes] = await Promise.all([
       send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
-      send<BackgroundToPopup>({ type: 'GET_RELAY_CONFIG' }) as Promise<{ type: 'RELAY_CONFIG'; relayUrl: string; lastSyncedAt: string | null } | null>,
       send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
       send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }) as Promise<{ type: 'NATIVE_HOST_STATUS'; available: boolean } | null>,
     ])
@@ -369,7 +318,6 @@ async function init() {
     const activeSource = statusRes.activeSource
     const showExport = activeSource === 'local' && nativeStatusRes?.available === true
     showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [], showExport)
-    if (relayRes) renderSyncStatus(relayRes.relayUrl, relayRes.lastSyncedAt)
 
     const vaults = vaultListRes?.vaults ?? []
     const others = vaults.filter(v => !(v.source === activeSource && (!v.name || v.name === _selectedNativeVaultName)))
@@ -500,8 +448,6 @@ unlockForm.addEventListener('submit', async e => {
 })
 
 lockBtn.addEventListener('click', lockVault)
-saveRelayBtn.addEventListener('click', saveRelayUrl)
-syncBtn.addEventListener('click', syncNow)
 
 toggleCreateBtn.addEventListener('click', showCreatePanel)
 toggleUnlockBtn.addEventListener('click', () => showUnlockPanel())

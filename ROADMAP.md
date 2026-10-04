@@ -81,7 +81,7 @@ The Cloudflare Worker relay is being removed. Sync will instead write the encryp
 ### Build steps
 
 - [x] Write `src/storage.ts` — `readVaultFile`, `writeVaultFile`, `detectDriveMissing`, `VaultStorageError` (tests in `tests/storage.test.ts`, run `npm test`)
-- [ ] Remove `src/relay.ts` and `relay/worker.ts` (keep `relay/` dir with a tombstone README explaining the decision)
+- [x] Remove `src/relay.ts` and `relay/worker.ts` (keep `relay/` dir with a tombstone README explaining the decision)
 - [ ] Desktop: replace Sync screen with Storage screen — path picker, test-read button, error states
 - [ ] Desktop: write to storage path on every vault seal; read from it on startup when local copy absent/older
 - [ ] Extension: remove relay URL input from popup; add vault file import button for the no-desktop-app fallback

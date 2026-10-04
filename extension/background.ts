@@ -36,8 +36,6 @@ import {
 import type { CredentialValue } from '../src/form-filler'
 import { Vault } from '../src/vault'
 import type { PersistedVault } from '../src/vault'
-import { syncVault } from '../src/relay'
-import type { RelayConfig } from '../src/relay'
 import { generateMnemonicBundle, restoreFromMnemonic, verifyMnemonicCommitment } from '../src/recovery'
 import { didFromSeed } from '../src/did'
 import { isNativeHostAvailable, nativeReadVault, nativeWriteVault, nativeListVaults, nativeDeleteVault } from './nativeHost'
@@ -139,21 +137,6 @@ async function saveVaultBlob(blob: PersistedVault): Promise<void> {
   await chrome.storage.local.set({ vault: blob })
 }
 
-// ── Relay config helpers ──────────────────────────────────────────────────────
-
-interface RelayStorage {
-  relayUrl: string
-  lastSyncedAt: string | null
-}
-
-async function loadRelayConfig(): Promise<RelayStorage> {
-  const result = await chrome.storage.local.get('relayConfig')
-  return (result['relayConfig'] as RelayStorage | undefined) ?? { relayUrl: '', lastSyncedAt: null }
-}
-
-async function saveRelayConfig(config: RelayStorage): Promise<void> {
-  await chrome.storage.local.set({ relayConfig: config })
-}
 
 // ── Available claim types for a detected set of fields ────────────────────────
 
@@ -552,72 +535,6 @@ async function handleMessage(
     const approved = allClaims.filter(c => existing.claimTypes.includes(c.type))
     const fillMap = buildFillMap(approved)
     sendResponse({ type: 'FILL_DATA', fillMap })
-    return
-  }
-
-  // ── Sync / relay messages ──────────────────────────────────────────────────
-
-  if (message.type === 'GET_RELAY_CONFIG') {
-    const config = await loadRelayConfig()
-    sendResponse({ type: 'RELAY_CONFIG', relayUrl: config.relayUrl, lastSyncedAt: config.lastSyncedAt })
-    return
-  }
-
-  if (message.type === 'SET_RELAY_CONFIG') {
-    const existing = await loadRelayConfig()
-    await saveRelayConfig({ ...existing, relayUrl: message.relayUrl })
-    sendResponse({ type: 'RELAY_CONFIG', relayUrl: message.relayUrl, lastSyncedAt: existing.lastSyncedAt })
-    return
-  }
-
-  if (message.type === 'SYNC_VAULT') {
-    if (!session) {
-      sendResponse({ type: 'SYNC_RESULT', ok: false, error: 'Vault is locked' })
-      return
-    }
-
-    const relayStorage = await loadRelayConfig()
-    if (!relayStorage.relayUrl) {
-      sendResponse({ type: 'SYNC_RESULT', ok: false, error: 'No relay URL configured' })
-      return
-    }
-
-    if (session.ownerPrivateKey.length === 0) {
-      sendResponse({ type: 'SYNC_RESULT', ok: false, error: 'Signing keypair not available — unlock with your recovery mnemonic to enable sync' })
-      return
-    }
-
-    try {
-      const localBlob = await session.vault.seal()
-      await saveVaultBlob(localBlob)
-
-      const relayConfig: RelayConfig = {
-        url: relayStorage.relayUrl,
-        ownerId: session.vault.owner.id,
-      }
-
-      const { blob, result } = await syncVault(
-        relayConfig,
-        localBlob,
-        session.ownerPrivateKey,
-        session.ownerPublicKey,
-      )
-
-      // If remote was newer, replace local storage with the pulled blob.
-      // We can't re-open in-memory without the passphrase (never stored), so the
-      // in-memory session keeps the current state; the updated blob will be loaded
-      // on next unlock.
-      if (result.action === 'pulled') {
-        await saveVaultBlob(blob)
-      }
-
-      const syncedAt = new Date().toISOString()
-      await saveRelayConfig({ relayUrl: relayStorage.relayUrl, lastSyncedAt: syncedAt })
-
-      sendResponse({ type: 'SYNC_RESULT', ok: true, action: result.action, syncedAt })
-    } catch (err) {
-      sendResponse({ type: 'SYNC_RESULT', ok: false, error: String(err) })
-    }
     return
   }
 
