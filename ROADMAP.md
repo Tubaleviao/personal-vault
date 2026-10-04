@@ -237,7 +237,7 @@ A merge is needed when, at sync time, **both** the local copy and the external c
 
 ---
 
-## Phase 3.5.1 — Vault Discovery & Selection
+## Phase 3.5.1 — Vault Discovery & Selection ✅
 
 Currently the extension and desktop app can each have separate vaults (one in `chrome.storage.local`, one in `vault.json`) with no way to reconcile them. This step fixes that with a proper vault picker.
 
