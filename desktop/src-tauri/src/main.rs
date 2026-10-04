@@ -20,6 +20,10 @@ fn main() {
             commands::vault_file_exists,
             commands::list_vault_files,
             commands::delete_vault_file,
+            commands::get_storage_path,
+            commands::set_storage_path,
+            commands::read_external_vault,
+            commands::write_external_vault,
         ])
         .run(tauri::generate_context!())
         .expect("error while running personal vault");
