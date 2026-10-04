@@ -6,3 +6,4 @@ dist/
 crypto-shim.js
 extension/crypto-shim.js
 desktop/src-tauri/resources/
+extension/*.zip
