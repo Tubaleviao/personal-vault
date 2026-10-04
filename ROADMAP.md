@@ -98,7 +98,7 @@ The Cloudflare Worker relay is being removed. Sync will instead write the encryp
 - [x] STRIDE threat model document — `THREAT_MODEL.md` covers all trust boundaries, mitigations, and open risks
 - [x] `npm audit` in CI — `.github/workflows/ci.yml` runs audit + `tsc --noEmit` + extension build on every push/PR
 - [x] Upgrade scrypt N from 2^14 to 2^16 — `VaultHeader.scryptN` stores the parameter; old vaults fall back to 16384 transparently
-- [ ] Plan for external cryptography review before public launch — noted in `THREAT_MODEL.md` open risks; fund via NLnet/NGI grant
+- [x] Plan for external cryptography review before public launch — `CRYPTO_REVIEW_PLAN.md` defines scope, preconditions, deliverables and funding path (NLnet/NGI); the review itself still needs funding. Open risk stays in `THREAT_MODEL.md`
 - [x] SD-JWT full spec conformance — `issueSDJWT()` / `verifySDJWT()` in `did.ts` implement the compact `~`-separated format with per-claim salt disclosures and SHA-256 digests; `frameSDJWT()` kept as a deprecated wrapper
 - [x] VC proof verification in `importVC()` — `verifyVCProof()` checks Ed25519Signature2020 proofs; claims get `verification: 'verified'` only on a valid cryptographic check, `'none'` otherwise
 

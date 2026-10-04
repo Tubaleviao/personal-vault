@@ -101,7 +101,7 @@
 | Flash drive lost or stolen | Low | The file is XChaCha20-Poly1305 ciphertext under a scrypt-derived key; an attacker must brute-force the passphrase offline (see scope notes below). Use a strong passphrase and keep the BIP-39 recovery phrase off the drive. |
 | Stale or rolled-back vault copy served by the cloud provider or an old drive | Low | `sequenceNumber` is compared on open and a lower-sequence copy is flagged. Rollback is detectable only when a newer copy has been seen on this device. |
 | scrypt N stored in VaultHeader (client-controlled) | Low | ~~Mitigated~~: `Vault.open()` enforces `scryptN >= SCRYPT_N_MIN` (16384) and `<= SCRYPT_N_MAX` (2^20) before calling `deriveKey`; `deriveKey` independently validates the range. Crafted headers outside this band are rejected before any memory allocation. |
-| No external cryptographic audit | High | All crypto primitives are off-the-shelf (libsodium, Node built-ins), but the protocol composition (key derivation, grant signing, bundle format) has not been reviewed by an independent cryptographer. Plan: fund via NLnet/NGI grant before public launch. |
+| No external cryptographic audit | High | All crypto primitives are off-the-shelf (libsodium, Node built-ins), but the protocol composition (key derivation, grant signing, bundle format) has not been reviewed by an independent cryptographer. Plan: `CRYPTO_REVIEW_PLAN.md`; fund via NLnet/NGI grant before public launch. |
 
 ---
 
