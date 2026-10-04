@@ -277,7 +277,7 @@ Publishing to the Web Store gives the extension a permanent, public extension ID
 ### Steps
 
 - [ ] **Create a Chrome Web Store developer account** ($5 one-time fee at [chrome.google.com/webstore/devconsole](https://chrome.google.com/webstore/devconsole))
-- [ ] **Build the extension for submission** — run `node extension/build.mjs`, then zip `extension/dist/`
+- [x] **Build the extension for submission** — `npm run extension:package` builds and writes `extension/personal-vault-extension-<version>.zip` (`scripts/package-extension.ts`; the dev-only `key` is stripped from the zipped manifest)
 - [ ] **Submit for review** — upload the zip, fill in store listing (description, screenshots, privacy policy URL)
 - [ ] **After approval: update the extension ID**
   - The Web Store assigns a new permanent ID (e.g. `abcdefghijklmnopabcdefghijklmnop`)
