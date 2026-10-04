@@ -252,6 +252,8 @@ export interface MsgMergeResult {
   type: 'MERGE_RESULT'
   ok: boolean
   added: number
+  /** Other changes the merge made (deletions, replaced claims, revoked grants). */
+  note?: string
   error?: string
 }
 

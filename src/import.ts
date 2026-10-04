@@ -54,7 +54,7 @@ function collect(pairs: Iterable<[string, unknown]>): ImportedAutofillClaim[] {
  * Throws on malformed JSON or unexpected shape.
  */
 export function parseTakeoutAutofill(text: string): ImportedAutofillClaim[] {
-  const data = JSON.parse(text) as { Autofill?: unknown }
+  const data = JSON.parse(text.replace(/^\uFEFF/, '')) as { Autofill?: unknown }
   if (!data || typeof data !== 'object' || !Array.isArray(data.Autofill)) {
     throw new Error('Not a Takeout Autofill.json file')
   }
@@ -98,8 +98,10 @@ export function parseCsv(text: string, delimiter = ','): string[][] {
 export function parseAutofillCsv(text: string): ImportedAutofillClaim[] {
   const body = text.replace(/^\uFEFF/, '')
   // Locales such as pt-BR export with ';' — pick it when the header line has no commas.
-  const headerLine = body.split(/\r?\n/, 1)[0]
-  const delimiter = !headerLine.includes(',') && headerLine.includes(';') ? ';' : ','
+  const headerLine = body.split(/\r\n|\r|\n/, 1)[0]
+  // Count delimiters outside quotes so a comma inside a quoted column name does not decide.
+  const unquoted = headerLine.replace(/"[^"]*"/g, '')
+  const delimiter = !unquoted.includes(',') && unquoted.includes(';') ? ';' : ','
   const [header, ...rows] = parseCsv(body, delimiter)
   if (!header) return []
   const pairs: [string, unknown][] = []

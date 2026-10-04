@@ -62,3 +62,10 @@ test('takeout: higher count wins', () => {
   ] })
   assert.equal(parseTakeoutAutofill(text)[0].value, 'main@b.co')
 })
+
+test('takeout json with BOM parses; csv header with quoted comma keeps ; delimiter', () => {
+  const t = '﻿' + JSON.stringify({ Autofill: [{ name: 'email', value: 'a@b.co' }] })
+  assert.equal(parseTakeoutAutofill(t)[0].value, 'a@b.co')
+  const claims = parseAutofillCsv('"Sobrenome, Nome";Email\r\nSilva;a@b.co\r\n')
+  assert.ok(claims.some(c => c.type === 'schema:email' && c.value === 'a@b.co'))
+})

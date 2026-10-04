@@ -50,3 +50,8 @@ test('array credentialSubject is imported', async () => {
   const claims = await parseVCWalletExport(JSON.stringify(vc({ credentialSubject: [{ a: '1' }, { b: '2' }] })))
   assert.equal(claims.length, 2)
 })
+
+test('ownerDid given: subject naming someone else is never verified', async () => {
+  const claims = await parseVCWalletExport(JSON.stringify(vc()), 'did:example:other')
+  assert.ok(claims.length > 0 && claims.every(c => c.verification === 'none'))
+})

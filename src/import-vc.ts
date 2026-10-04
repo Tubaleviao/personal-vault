@@ -38,16 +38,20 @@ function extractVCs(data: unknown): RawVC[] {
  * Presentation / `{ credentials: [...] }` wrapper) into claims. Proofs are
  * checked via `importVC`; claims are `verified` only on a valid Ed25519Signature2020
  * proof. Entries that are not JSON-LD VCs (e.g. JWT strings) are ignored.
+ * Pass `ownerDid` so credentials naming a different subject are downgraded to unverified.
  * Throws on malformed JSON or when no credential is found.
  */
-export async function parseVCWalletExport(text: string): Promise<ImportedWalletClaim[]> {
+export async function parseVCWalletExport(text: string, ownerDid?: string): Promise<ImportedWalletClaim[]> {
   const vcs = extractVCs(JSON.parse(text.replace(/^﻿/, '')))
   if (vcs.length === 0) throw new Error('No verifiable credentials found')
   const out: ImportedWalletClaim[] = []
   for (const vc of vcs) {
+    // A valid issuer signature only proves the issuer signed it, not that it is about this vault's owner.
+    const subjects = Array.isArray(vc.credentialSubject) ? vc.credentialSubject : [vc.credentialSubject]
+    const aboutOwner = ownerDid === undefined || subjects.every(s => typeof s.id !== 'string' || s.id === ownerDid)
     for (const c of await importVC(vc)) {
       if (c.value === null || c.value === undefined || c.value === '') continue
-      out.push({ ...c, value: typeof c.value === 'string' ? c.value : JSON.stringify(c.value) })
+      out.push({ ...c, verification: aboutOwner ? c.verification : 'none', value: typeof c.value === 'string' ? c.value : JSON.stringify(c.value) })
     }
   }
   return out

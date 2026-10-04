@@ -3,6 +3,7 @@ import type { Vault, PersistedVault } from '@vault/vault'
 import { Vault as VaultClass } from '@vault/vault'
 import { listVaultFiles, readVaultFile, writeVaultFile, setActiveVaultName, deleteVaultFile } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
+import { mergeOrImport } from '@vault/merge'
 
 interface Props {
   vault: Vault
@@ -54,15 +55,10 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
       if (!otherPersisted) throw new Error('Could not read vault file.')
 
       const other = await VaultClass.open(otherPersisted, state.passphrase)
-      const before = vault.listClaims().length
       let added = 0
+      let note = ''
       try {
-        // Same owner: merge honours tombstones and updatedAt.
-        added = vault.mergeFrom(other).onlyRemote
-      } catch (mergeErr) {
-        if (!(mergeErr instanceof Error && /different owners/.test(mergeErr.message))) throw mergeErr
-        for (const claim of other.listClaims()) vault.importClaim(claim)
-        added = Math.max(0, vault.listClaims().length - before)
+        ;({ added, note } = mergeOrImport(vault, other))
       } finally {
         other.lock().catch(() => { /* best effort */ })
       }
@@ -78,7 +74,7 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
       const addedMsg = added > 0 ? `Merged ${added} claim${added === 1 ? '' : 's'}` : 'No new claims to merge'
       setMergeStates(s => ({
         ...s,
-        [name]: { ...s[name], busy: false, passphrase: '', result: { ok: true, msg: `${addedMsg} — source vault deleted` } },
+        [name]: { ...s[name], busy: false, passphrase: '', result: { ok: true, msg: `${addedMsg}${note ? ` (${note})` : ''} — source vault deleted` } },
       }))
     } catch (err) {
       setActiveVaultName(activeVaultName)

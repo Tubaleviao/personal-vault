@@ -76,6 +76,13 @@ export interface AuditEntry {
   createdAt: string
 }
 
+/** Compare ISO-ish timestamps by instant (formats with/without millis or offsets mix); falls back to string order if unparseable. */
+function compareTimestamps(a: string, b: string): number {
+  const pa = Date.parse(a), pb = Date.parse(b)
+  if (Number.isFinite(pa) && Number.isFinite(pb)) return Math.sign(pa - pb)
+  return a === b ? 0 : a < b ? -1 : 1
+}
+
 export interface MergeSummary {
   identical: number
   localWins: number
@@ -399,7 +406,8 @@ export class Vault {
       if (!l && r) { local.claims[id] = { ...r, ownerId: local.owner.id }; summary.onlyRemote++; continue }
       const lt = l!.updatedAt ?? l!.issuedAt
       const rt = r!.updatedAt ?? r!.issuedAt
-      if (lt === rt) {
+      const cmp = compareTimestamps(lt, rt)
+      if (cmp === 0) {
         const lj = JSON.stringify(sortKeys({ ...l!, ownerId: '' }))
         const rj = JSON.stringify(sortKeys({ ...r!, ownerId: '' }))
         if (lj === rj) {
@@ -416,7 +424,7 @@ export class Vault {
             summary.overwritten.push({ claimId: id, claimType: l!.type, kept: 'local' })
           }
         }
-      } else if (rt > lt) {
+      } else if (cmp < 0) {
         local.claims[id] = { ...r!, ownerId: local.owner.id }
         summary.remoteWins++
         summary.overwritten.push({ claimId: id, claimType: r!.type, kept: 'remote' })
