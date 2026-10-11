@@ -147,6 +147,27 @@ function showApprovalPrompt(claimTypes: string[], onApprove: (types: string[], p
   promptBanner = banner
 }
 
+/** Tell the user the vault is locked so a silent non-fill isn't mistaken for a bug. */
+function showLockedNotice() {
+  if (document.getElementById('__pvault_locked')) return
+  const el = document.createElement('div')
+  el.id = '__pvault_locked'
+  el.setAttribute('style', [
+    'position:fixed', 'top:16px', 'right:16px', 'z-index:2147483647',
+    'background:#d97706', 'color:#fff', 'border-radius:8px',
+    'padding:10px 12px 10px 16px', 'font-family:system-ui,sans-serif', 'font-size:13px',
+    'box-shadow:0 4px 16px rgba(0,0,0,.3)', 'display:flex', 'gap:12px', 'align-items:center',
+  ].join(';'))
+  const text = document.createElement('span')
+  text.textContent = 'Personal Vault is locked — click the toolbar icon to unlock'
+  const close = document.createElement('button')
+  close.textContent = '×'
+  close.setAttribute('style', 'background:none;border:none;color:#fff;font-size:16px;cursor:pointer;padding:0')
+  close.addEventListener('click', () => el.remove())
+  el.append(text, close)
+  document.body.appendChild(el)
+}
+
 function showFillConfirmation(count: number) {
   const toast = document.createElement('div')
   toast.setAttribute('style', [
@@ -400,7 +421,8 @@ async function main() {
         const count = applyFillMap(response.fillMap)
         if (count > 0) showFillConfirmation(count)
       }
-      // VAULT_LOCKED and APPROVAL_REVOKED: silently skip
+      else if (response.type === 'VAULT_LOCKED') showLockedNotice()
+      // APPROVAL_REVOKED: silently skip
     }
   }
 
@@ -414,6 +436,7 @@ async function main() {
         type: 'CREDENTIAL_FORM_DETECTED',
         origin,
       })
+      if (credResp?.type === 'VAULT_LOCKED') showLockedNotice()
       if (credResp?.type === 'CREDENTIAL_FILL_PROMPT') {
         credentialPromptSuppressed = true
         showCredentialFillBanner(credResp.credentials, loginFormDetected)
