@@ -3,12 +3,13 @@ import type { Vault } from '@vault/vault'
 import type { PersistedVault } from '@vault/vault'
 import Unlock from './screens/Unlock'
 import Claims from './screens/Claims'
+import Credentials from './screens/Credentials'
 import Audit from './screens/Audit'
 import Merge from './screens/Merge'
 import Storage from './screens/Storage'
 import { writeVaultFile, getActiveVaultName, getLastSyncError } from './tauriVault'
 
-type Screen = 'claims' | 'audit' | 'storage' | 'merge'
+type Screen = 'claims' | 'credentials' | 'audit' | 'storage' | 'merge'
 
 interface UnlockedState {
   vault: Vault
@@ -17,6 +18,7 @@ interface UnlockedState {
 
 const NAV: { id: Screen; label: string }[] = [
   { id: 'claims', label: 'Claims' },
+  { id: 'credentials', label: 'Credentials' },
   { id: 'audit',  label: 'Audit log' },
   { id: 'storage', label: 'Storage' },
   { id: 'merge',  label: 'Import' },
@@ -97,6 +99,11 @@ export default function App() {
         {syncWarning && <div style={styles.syncWarning}>{syncWarning}</div>}
         {screen === 'claims' && (
           <Claims vault={unlocked.vault} onVaultChanged={
+            (v, p) => setUnlocked({ vault: v, persisted: p })
+          } />
+        )}
+        {screen === 'credentials' && (
+          <Credentials vault={unlocked.vault} onVaultChanged={
             (v, p) => setUnlocked({ vault: v, persisted: p })
           } />
         )}

@@ -158,9 +158,15 @@
   <section id="unlocked-view" style="display:none">
     <!-- Main screen -->
     <div id="main-panel">
-      <h2>Approved Sites</h2>
-      <ul id="approval-list" class="approval-list"></ul>
-      <div id="no-approvals">No sites approved yet.</div>
+      <div id="approvals-section" style="display:none">
+        <h2>Approved Sites</h2>
+        <ul id="approval-list" class="approval-list"></ul>
+      </div>
+      <div id="credentials-section" style="display:none;margin-top:12px">
+        <h2>Saved Credentials</h2>
+        <ul id="credential-list" class="approval-list"></ul>
+      </div>
+      <div id="no-approvals">No data</div>
 
       <div id="export-section" style="display:none;margin-top:14px">
         <button id="export-btn" style="width:100%;background:transparent;border:1px solid #3b82f6;border-radius:6px;color:#7dd3fc;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer">Save vault to desktop</button>

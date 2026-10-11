@@ -9,7 +9,7 @@
  */
 
 import type { PopupToBackground, BackgroundToPopup, VaultListEntry } from '../messages'
-import type { SiteApproval } from '../../src/form-filler'
+import type { SiteApproval, CredentialEntry } from '../../src/form-filler'
 import { isSiteApprovalValid } from '../../src/form-filler'
 
 async function send<T extends BackgroundToPopup>(msg: PopupToBackground): Promise<T | null> {
@@ -31,6 +31,9 @@ const mnemonicInput = document.getElementById('mnemonic-input') as HTMLInputElem
 const unlockForm = document.getElementById('unlock-form') as HTMLFormElement
 const errorMsg = document.getElementById('error-msg')!
 const approvalList = document.getElementById('approval-list')!
+const approvalsSection = document.getElementById('approvals-section')!
+const credentialList = document.getElementById('credential-list')!
+const credentialsSection = document.getElementById('credentials-section')!
 const noApprovals = document.getElementById('no-approvals')!
 const lockBtn = document.getElementById('lock-btn')!
 const nativeBadge = document.getElementById('native-badge')!
@@ -74,15 +77,47 @@ const mnemonicDoneBtn = document.getElementById('mnemonic-done-btn')!
 
 // ── Render ────────────────────────────────────────────────────────────────────
 
+let _validApprovals: SiteApproval[] = []
+let _credentials: CredentialEntry[] = []
+
+/** Show each list only when it has data; show "No data" when both are empty. */
+function updateEmptyState() {
+  approvalsSection.style.display = _validApprovals.length > 0 ? 'block' : 'none'
+  credentialsSection.style.display = _credentials.length > 0 ? 'block' : 'none'
+  noApprovals.style.display = _validApprovals.length === 0 && _credentials.length === 0 ? 'block' : 'none'
+}
+
+function renderCredentials(credentials: CredentialEntry[]) {
+  _credentials = credentials
+  credentialList.innerHTML = ''
+  for (const cred of credentials) {
+    const li = document.createElement('li')
+    li.className = 'approval-item'
+
+    const info = document.createElement('div')
+    info.style.flex = '1'
+
+    const origin = document.createElement('div')
+    origin.className = 'approval-origin'
+    origin.textContent = cred.origin
+
+    const username = document.createElement('div')
+    username.className = 'approval-types'
+    username.textContent = cred.username
+
+    info.appendChild(origin)
+    info.appendChild(username)
+    li.appendChild(info)
+    credentialList.appendChild(li)
+  }
+  updateEmptyState()
+}
+
 function renderApprovals(approvals: SiteApproval[]) {
   approvalList.innerHTML = ''
   const valid = approvals.filter(isSiteApprovalValid)
-
-  if (valid.length === 0) {
-    noApprovals.style.display = 'block'
-    return
-  }
-  noApprovals.style.display = 'none'
+  _validApprovals = valid
+  updateEmptyState()
 
   for (const approval of valid) {
     const li = document.createElement('li')
@@ -114,7 +149,7 @@ function renderApprovals(approvals: SiteApproval[]) {
   }
 }
 
-function showUnlocked(ownerDid: string, approvals: SiteApproval[], showExport = false) {
+function showUnlocked(ownerDid: string, approvals: SiteApproval[], showExport = false, credentials: CredentialEntry[] = []) {
   statusDot.classList.add('unlocked')
   didShort.textContent = ownerDid !== 'unknown' ? ownerDid.slice(-8) : ''
   lockedView.style.display = 'none'
@@ -124,6 +159,7 @@ function showUnlocked(ownerDid: string, approvals: SiteApproval[], showExport = 
   exportSection.style.display = showExport ? 'block' : 'none'
   exportStatus.textContent = ''
   renderApprovals(approvals)
+  renderCredentials(credentials)
 }
 
 function showLocked() {
@@ -282,13 +318,15 @@ async function transitionToUnlocked(ownerDid: string, activeSource: 'native' | '
 
   // Fetch secondary data with individual error handling so a suspended SW on
   // any one of these doesn't abort the transition.
-  const [approvalsRes, vaultListRes, nativeStatusRes] = await Promise.all([
+  const [approvalsRes, credentialsRes, vaultListRes, nativeStatusRes] = await Promise.all([
     send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }).catch(() => null) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
+    send<BackgroundToPopup>({ type: 'LIST_CREDENTIALS' }).catch(() => null) as Promise<{ type: 'CREDENTIALS_LIST'; credentials: CredentialEntry[] } | null>,
     send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }).catch(() => null) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
     send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }).catch(() => null) as Promise<{ type: 'NATIVE_HOST_STATUS'; available: boolean } | null>,
   ])
 
   if (approvalsRes?.type === 'APPROVALS_LIST') renderApprovals(approvalsRes.approvals)
+  if (credentialsRes?.type === 'CREDENTIALS_LIST') renderCredentials(credentialsRes.credentials)
 
   const vaults = (vaultListRes?.type === 'VAULT_LIST' ? vaultListRes.vaults : null) ?? []
   const others = vaults.filter(v => !(v.source === activeSource && (!v.name || v.name === _selectedNativeVaultName)))
@@ -309,15 +347,16 @@ async function init() {
   const statusRes = await send<BackgroundToPopup>({ type: 'GET_VAULT_STATUS' }) as { type: 'VAULT_STATUS'; unlocked: boolean; ownerDid: string | null; activeSource: 'native' | 'local' | null } | null
 
   if (statusRes?.unlocked && statusRes.ownerDid) {
-    const [approvalsRes, vaultListRes, nativeStatusRes] = await Promise.all([
+    const [approvalsRes, credentialsRes, vaultListRes, nativeStatusRes] = await Promise.all([
       send<BackgroundToPopup>({ type: 'LIST_APPROVALS' }) as Promise<{ type: 'APPROVALS_LIST'; approvals: SiteApproval[] } | null>,
+      send<BackgroundToPopup>({ type: 'LIST_CREDENTIALS' }).catch(() => null) as Promise<{ type: 'CREDENTIALS_LIST'; credentials: CredentialEntry[] } | null>,
       send<BackgroundToPopup>({ type: 'GET_VAULT_LIST' }) as Promise<{ type: 'VAULT_LIST'; vaults: VaultListEntry[] } | null>,
       send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }) as Promise<{ type: 'NATIVE_HOST_STATUS'; available: boolean } | null>,
     ])
 
     const activeSource = statusRes.activeSource
     const showExport = activeSource === 'local' && nativeStatusRes?.available === true
-    showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [], showExport)
+    showUnlocked(statusRes.ownerDid, approvalsRes?.approvals ?? [], showExport, credentialsRes?.type === 'CREDENTIALS_LIST' ? credentialsRes.credentials : [])
 
     const vaults = vaultListRes?.vaults ?? []
     const others = vaults.filter(v => !(v.source === activeSource && (!v.name || v.name === _selectedNativeVaultName)))

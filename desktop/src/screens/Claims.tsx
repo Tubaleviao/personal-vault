@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import type { Vault, Claim, PersistedVault } from '@vault/vault'
 import { writeVaultFile } from '../tauriVault'
+import { CREDENTIAL_CLAIM_TYPE } from '@vault/form-filler'
 
 interface Props {
   vault: Vault
@@ -13,7 +14,7 @@ const CLAIM_TYPES = [
 ]
 
 export default function Claims({ vault, onVaultChanged }: Props) {
-  const [claims, setClaims] = useState<Claim[]>(() => vault.listClaims())
+  const [claims, setClaims] = useState<Claim[]>(() => vault.listClaims().filter(c => c.type !== CREDENTIAL_CLAIM_TYPE))
   const [editing, setEditing] = useState<Claim | null>(null)
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,7 +40,7 @@ export default function Claims({ vault, onVaultChanged }: Props) {
       // seal() serialises and encrypts but does NOT lock (lock() does that)
       const persisted = await vault.seal()
       await writeVaultFile(persisted)
-      setClaims(vault.listClaims())
+      setClaims(vault.listClaims().filter(c => c.type !== CREDENTIAL_CLAIM_TYPE))
       onVaultChanged(vault, persisted)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
