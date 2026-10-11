@@ -488,6 +488,15 @@ unlockForm.addEventListener('submit', async e => {
 
 lockBtn.addEventListener('click', lockVault)
 
+const autolockSelect = document.getElementById('autolock-select') as HTMLSelectElement
+chrome.storage.local.get('autoLockMinutes').then(r => {
+  const v = r['autoLockMinutes']
+  autolockSelect.value = String(typeof v === 'number' ? v : 15)
+}).catch(() => { /* default shown */ })
+autolockSelect.addEventListener('change', () => {
+  chrome.storage.local.set({ autoLockMinutes: Number(autolockSelect.value) }).catch(() => { /* ignore */ })
+})
+
 toggleCreateBtn.addEventListener('click', showCreatePanel)
 toggleUnlockBtn.addEventListener('click', () => showUnlockPanel())
 backToPickerBtn.addEventListener('click', () => showVaultPickerPanel(_discoveredVaults))

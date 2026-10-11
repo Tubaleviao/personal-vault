@@ -77,6 +77,115 @@ interface VaultSession {
 
 let session: VaultSession | null = null
 
+// ── Session persistence & auto-lock ───────────────────────────────────────────
+//
+// MV3 kills the service worker after ~30 s idle, which drops the in-memory
+// `session`. To avoid silently locking, the unlock secrets are mirrored into
+// chrome.storage.session (memory-only, never written to disk, cleared when the
+// browser closes) and the Vault is re-opened lazily on the next message.
+// Locking is then deliberate: an inactivity alarm (user setting) or the Lock
+// button. autoLockMinutes: 0 = stay unlocked until the browser is closed.
+
+const AUTOLOCK_ALARM = 'pv-autolock'
+const AUTOLOCK_KEY = 'autoLockMinutes'
+const DEFAULT_AUTOLOCK_MINUTES = 15
+
+interface PersistedSession {
+  passphrase: string
+  mnemonic?: string
+  source: 'native' | 'local' | null
+  nativeName: string | null
+}
+
+async function getAutoLockMinutes(): Promise<number> {
+  const r = await chrome.storage.local.get(AUTOLOCK_KEY)
+  const v = r[AUTOLOCK_KEY]
+  return typeof v === 'number' && v >= 0 ? v : DEFAULT_AUTOLOCK_MINUTES
+}
+
+async function scheduleAutoLock(): Promise<void> {
+  await chrome.alarms.clear(AUTOLOCK_ALARM)
+  const minutes = await getAutoLockMinutes()
+  if (minutes > 0) await chrome.alarms.create(AUTOLOCK_ALARM, { when: Date.now() + minutes * 60_000 })
+}
+
+function setBadge(locked: boolean): void {
+  chrome.action.setBadgeText({ text: locked ? '!' : '' }).catch(() => { /* ignore */ })
+  chrome.action.setBadgeBackgroundColor({ color: '#d97706' }).catch(() => { /* ignore */ })
+  chrome.action.setTitle({ title: locked ? 'Personal Vault — locked (click to unlock)' : 'Personal Vault' }).catch(() => { /* ignore */ })
+}
+
+async function onUnlocked(passphrase: string, mnemonic: string | undefined): Promise<void> {
+  const data: PersistedSession = { passphrase, mnemonic, source: _selectedVaultSource, nativeName: _selectedNativeVaultName }
+  await chrome.storage.session.set({ pvSession: data })
+  await scheduleAutoLock()
+  setBadge(false)
+}
+
+function wipeMemorySession(): void {
+  if (session) {
+    session.ownerPrivateKey.fill(0)
+    session.ownerPublicKey.fill(0)
+    session.vault.lock().catch(() => { /* best effort */ })
+    session = null
+  }
+}
+
+async function lockSession(): Promise<void> {
+  wipeMemorySession()
+  _selectedVaultSource = null
+  _selectedNativeVaultName = null
+  await chrome.storage.session.remove('pvSession')
+  await chrome.alarms.clear(AUTOLOCK_ALARM)
+  setBadge(true)
+}
+
+let _restoring: Promise<void> | null = null
+
+/** Re-open the vault from chrome.storage.session after a service-worker restart. */
+function ensureSession(): Promise<void> {
+  if (session) return Promise.resolve()
+  _restoring ??= restoreSession().finally(() => { _restoring = null })
+  return _restoring
+}
+
+async function restoreSession(): Promise<void> {
+  const r = await chrome.storage.session.get('pvSession')
+  const saved = r['pvSession'] as PersistedSession | undefined
+  if (!saved) { setBadge(true); return }
+  try {
+    _selectedVaultSource = saved.source
+    _selectedNativeVaultName = saved.nativeName
+    const blob = await loadVaultBlob()
+    if (!blob) throw new Error('vault missing')
+    const vault = await Vault.open(blob, saved.passphrase, { recordUnlock: false })
+    let ownerPrivateKey = new Uint8Array(0)
+    let ownerPublicKey = new Uint8Array(0)
+    if (saved.mnemonic) {
+      const bundle = await restoreFromMnemonic(saved.mnemonic)
+      if (bundle) { ownerPrivateKey = bundle.keypair.privateKey; ownerPublicKey = bundle.keypair.publicKey }
+    }
+    session = { vault, ownerDid: vault.owner.did, ownerPrivateKey, ownerPublicKey }
+    setBadge(false)
+  } catch {
+    await lockSession()
+  }
+}
+
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === AUTOLOCK_ALARM) void lockSession()
+})
+
+// Setting changed in the popup → re-arm the alarm (only while unlocked).
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && AUTOLOCK_KEY in changes) {
+    chrome.storage.session.get('pvSession').then(r => { if (r['pvSession']) void scheduleAutoLock() })
+  }
+})
+
+// Initial badge state on every worker start.
+void ensureSession()
+
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
 async function loadApprovals(): Promise<SiteApproval[]> {
@@ -192,6 +301,13 @@ async function handleMessage(
   message: ContentToBackground | PopupToBackground,
   sendResponse: (response: BackgroundToContent | BackgroundToPopup | null) => void,
 ): Promise<void> {
+  // Restore the session after a service-worker restart, and count any real
+  // request as activity (status polls from the popup don't extend the timer).
+  if (message.type !== 'UNLOCK_VAULT' && message.type !== 'CREATE_VAULT' && message.type !== 'LOCK_VAULT') {
+    await ensureSession()
+    if (session && message.type !== 'GET_VAULT_STATUS') void scheduleAutoLock()
+  }
+
   // ── Vault lifecycle messages ───────────────────────────────────────────────
 
   if (message.type === 'UNLOCK_VAULT') {
@@ -230,6 +346,7 @@ async function handleMessage(
         ownerPrivateKey,
         ownerPublicKey,
       }
+      await onUnlocked(message.passphrase, message.mnemonic)
       const activeSource = _selectedVaultSource ?? (_nativeHostAvailable ? 'native' : 'local')
       sendResponse({ type: 'UNLOCK_RESULT', ok: true, ownerDid: vault.owner.did, activeSource })
     } catch (err) {
@@ -299,6 +416,7 @@ async function handleMessage(
         ownerPublicKey: bundle.keypair.publicKey,
       }
 
+      await onUnlocked(message.passphrase, bundle.mnemonic)
       sendResponse({ type: 'CREATE_RESULT', ok: true, mnemonic: bundle.mnemonic, ownerDid: didDoc.id, activeSource: targetSource })
     } catch (err) {
       sendResponse({ type: 'CREATE_RESULT', ok: false, error: String(err) })
@@ -307,14 +425,7 @@ async function handleMessage(
   }
 
   if (message.type === 'LOCK_VAULT') {
-    if (session) {
-      session.ownerPrivateKey.fill(0)
-      session.ownerPublicKey.fill(0)
-      session.vault.lock().catch(() => { /* best effort */ })
-      session = null
-    }
-    _selectedVaultSource = null
-    _selectedNativeVaultName = null
+    await lockSession()
     sendResponse(null)
     return
   }
@@ -733,12 +844,7 @@ async function handleMessage(
 
 // ── Vault lifecycle ───────────────────────────────────────────────────────────
 
-// Lock vault when service worker is about to be suspended
-chrome.runtime.onSuspend.addListener(() => {
-  if (session) {
-    session.ownerPrivateKey.fill(0)
-    session.ownerPublicKey.fill(0)
-    session.vault.lock().catch(() => { /* best effort */ })
-    session = null
-  }
-})
+// Wipe in-memory keys when the service worker is suspended. The vault is NOT
+// locked: chrome.storage.session still holds the unlock secrets and
+// ensureSession() re-opens it on the next message.
+chrome.runtime.onSuspend.addListener(() => { wipeMemorySession() })
