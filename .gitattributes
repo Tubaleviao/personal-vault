@@ -1,0 +1,20 @@
+# Normalise to LF so shell scripts, generated files and drift checks behave the
+# same on Windows checkouts (core.autocrlf) as on macOS/Linux.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.ico binary
+*.icns binary
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.wxs text eol=crlf
+*.nsi text eol=crlf
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.pck binary
+*.pkpass binary

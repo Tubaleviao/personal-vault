@@ -284,7 +284,7 @@ Publishing to the Web Store gives the extension a permanent, public extension ID
   - Remove the `"key"` field from `extension/manifest.json` (the Web Store manages the key; keeping it causes a submission error)
   - Update `native-host/com.personal_vault.json` → replace `allowed_origins` with the new store ID
   - Update `install_native_host()` in `desktop/src-tauri/src/commands.rs` if the manifest is embedded rather than read from the bundle
-  - Run `./desktop/build-native-host.sh` to re-stage the updated manifest, then cut a new desktop app release so existing users get the updated native host manifest automatically on next launch
+  - Run `node desktop/build-native-host.mjs` to re-stage the updated manifest, then cut a new desktop app release so existing users get the updated native host manifest automatically on next launch
 - [ ] **Keep the dev ID working alongside the store ID** during the transition by listing both origins in `com.personal_vault.json`:
   ```json
   "allowed_origins": [

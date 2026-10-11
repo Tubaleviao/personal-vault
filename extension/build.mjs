@@ -15,14 +15,22 @@
 import esbuild from 'esbuild'
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
+
+// All paths below ('./extension/...', 'crypto-shim.js', esbuild alias targets) are
+// repo-root relative, so make the script work from any cwd. esbuild reads cwd when
+// it is imported (before this runs), hence absWorkingDir too.
+const root = fileURLToPath(new URL('..', import.meta.url))
 
 const watch = process.argv.includes('--watch')
-const outdir = new URL('./dist/', import.meta.url).pathname
+// fileURLToPath, not URL.pathname: on Windows .pathname is '/C:/...' and breaks fs calls.
+const outdir = fileURLToPath(new URL('./dist/', import.meta.url))
 
 mkdirSync(outdir, { recursive: true })
 mkdirSync(join(outdir, 'popup'), { recursive: true })
 
 const sharedConfig = {
+  absWorkingDir: root,
   bundle: true,
   platform: 'browser',
   target: ['chrome120'],
@@ -80,7 +88,7 @@ export const createHash = (algo) => {
   }
 }
 `
-writeFileSync('crypto-shim.js', cryptoShim)
+writeFileSync(join(root, 'crypto-shim.js'), cryptoShim)
 
 // background + popup share vault code via ESM chunks (code splitting)
 const esmCtx = await esbuild.context({
@@ -102,14 +110,14 @@ const iifeCtx = await esbuild.context({
 })
 
 // Copy static assets
-copyFileSync('extension/manifest.json', join(outdir, 'manifest.json'))
-copyFileSync('extension/popup/index.html', join(outdir, 'popup/index.html'))
+copyFileSync(join(root, 'extension/manifest.json'), join(outdir, 'manifest.json'))
+copyFileSync(join(root, 'extension/popup/index.html'), join(outdir, 'popup/index.html'))
 
 // Copy icons
 const iconsDir = join(outdir, 'icons')
 mkdirSync(iconsDir, { recursive: true })
-for (const file of readdirSync('extension/icons')) {
-  copyFileSync(join('extension/icons', file), join(iconsDir, file))
+for (const file of readdirSync(join(root, 'extension/icons'))) {
+  copyFileSync(join(root, 'extension/icons', file), join(iconsDir, file))
 }
 
 if (watch) {
