@@ -11,9 +11,9 @@ Personal Vault Form Filler ("the extension") fills web forms using data from you
 ## How the extension handles your data
 
 - **Vault data** (names, dates, addresses and other claims) stays on your device. The extension talks only to the personal-vault desktop app on your computer, through Chrome's native messaging channel.
-- **Form filling** happens only after you approve it, per site and per field. A claim value is written into a page only after your approval, and that page can read it as it would anything you type.
+- **Form filling** happens only after you approve it. A claim value is written into a page only after your approval (you choose which claim types to fill, once or always for that site), and that page can read it as it would anything you type.
 - **Page content**: the content script reads form-field attributes (such as `autocomplete` and `name`) on pages you visit to detect which fields can be filled. This information is processed locally and never transmitted or stored.
-- **Stored locally**: your per-site approvals are saved in `chrome.storage` in your browser. You can revoke them any time from the extension popup. Uninstalling the extension removes them.
+- **Stored locally**: your per-site approvals, and (when you use a browser-local vault rather than the desktop app's vault files) your passphrase-encrypted vault blob, are saved in `chrome.storage.local` in your browser. Your unlocked vault is kept in memory only. You can revoke them any time from the extension popup. Uninstalling the extension removes them.
 
 ## Permissions
 
