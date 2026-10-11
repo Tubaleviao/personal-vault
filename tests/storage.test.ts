@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, readdir, chmod, symlink, lstat } from 'node:fs/promises'
+import { mkdtempSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -12,6 +13,14 @@ const blob = {
   header: { version: '1', ownerId: 'did:key:z', salt: 's', keyVerificationHash: 'h', mnemonicCommitment: 'm', sequenceNumber: 3, scryptN: 65536 },
   encrypted: { nonce: 'n', ciphertext: 'c' },
 } as unknown as PersistedVault
+
+// Windows needs admin / Developer Mode to create symlinks.
+const NO_SYMLINK = 'symlinks not permitted on this system'
+// (sync: the tests run as CJS, where top-level await is unavailable)
+const canSymlink = (() => {
+  const d = mkdtempSync(join(tmpdir(), 'vs-sl-'))
+  try { symlinkSync(d, join(d, 'l')); return true } catch { return false }
+})()
 
 async function code(p: Promise<unknown>): Promise<string> {
   try { await p } catch (e) { assert.ok(e instanceof VaultStorageError); return e.code }
@@ -76,6 +85,7 @@ test('path that is a directory is not mislabelled CORRUPT', async () => {
 
 test('unreadable file -> PERMISSION_DENIED', async (t) => {
   if (process.getuid?.() === 0) return t.skip('root bypasses permissions')
+  if (process.platform === 'win32') return t.skip('chmod 000 does not block reads on Windows')
   const dir = await mkdtemp(join(tmpdir(), 'vs-'))
   const p = join(dir, 'v')
   await writeVaultFile(p, blob)
@@ -83,7 +93,7 @@ test('unreadable file -> PERMISSION_DENIED', async (t) => {
   assert.equal(await code(readVaultFile(p)), 'PERMISSION_DENIED')
 })
 
-test('writes through a symlinked vault path', async () => {
+test('writes through a symlinked vault path', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'vs-'))
   const real = join(dir, 'real.vault')
   const link = join(dir, 'link.vault')
@@ -96,7 +106,8 @@ test('writes through a symlinked vault path', async () => {
 
 test('long vault filename still writes', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'vs-'))
-  const p = join(dir, 'a'.repeat(240) + '.vault')
+  // Windows MAX_PATH (260) applies to the whole path, not just the name.
+  const p = join(dir, 'a'.repeat(process.platform === 'win32' ? 100 : 240) + '.vault')
   await writeVaultFile(p, blob)
   assert.deepEqual(await readVaultFile(p), blob)
 })
@@ -140,7 +151,7 @@ test('out-of-range scryptN -> CORRUPT', async () => {
   assert.equal(await code(readVaultFile(p)), 'CORRUPT')
 })
 
-test('dangling symlink is not replaced -> DRIVE_MISSING', async () => {
+test('dangling symlink is not replaced -> DRIVE_MISSING', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'vs-'))
   const link = join(dir, 'v.vault')
   await symlink(join(dir, 'gone-drive', 'v.vault'), link)
@@ -148,7 +159,7 @@ test('dangling symlink is not replaced -> DRIVE_MISSING', async () => {
   assert.ok((await lstat(link)).isSymbolicLink())
 })
 
-test('symlink to not-yet-created file in existing dir is created through the link', async () => {
+test('symlink to not-yet-created file in existing dir is created through the link', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'vs-'))
   const link = join(dir, 'v.vault')
   await symlink(join(dir, 'v-real.vault'), link)
@@ -157,7 +168,7 @@ test('symlink to not-yet-created file in existing dir is created through the lin
   assert.equal((await readVaultFile(link)).header.ownerId, 'did:key:z')
 })
 
-test('chained symlinks to a not-yet-created file keep the whole chain intact', async () => {
+test('chained symlinks to a not-yet-created file keep the whole chain intact', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await mkdtemp(join(tmpdir(), 'vs-'))
   const link1 = join(dir, 'a.vault')
   const link2 = join(dir, 'b.vault')

@@ -52,7 +52,7 @@ if (require.main === module) {
   const dist = join(root, 'extension/dist')
   // build.mjs never cleans its outdir; stale hashed chunks would otherwise ship in the zip.
   rmSync(dist, { recursive: true, force: true })
-  execFileSync('node', [join(root, 'extension/build.mjs')], { stdio: 'inherit', cwd: root })
+  execFileSync(process.execPath, [join(root, 'extension/build.mjs')], { stdio: 'inherit', cwd: root })
   const entries = collectEntries(dist)
   if (!entries.some(e => e.name === 'manifest.json')) throw new Error('extension/dist has no manifest.json')
   const missing = missingReferences(readFileSync(join(dist, 'manifest.json'), 'utf8'), entries.map(e => e.name))

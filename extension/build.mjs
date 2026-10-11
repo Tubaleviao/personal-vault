@@ -15,14 +15,23 @@
 import esbuild from 'esbuild'
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
+
+// All paths below ('./extension/...', 'crypto-shim.js', esbuild alias targets) are
+// repo-root relative, so make the script work from any cwd. esbuild reads cwd when
+// it is imported (before this runs), hence absWorkingDir too.
+const root = fileURLToPath(new URL('..', import.meta.url))
+process.chdir(root)
 
 const watch = process.argv.includes('--watch')
-const outdir = new URL('./dist/', import.meta.url).pathname
+// fileURLToPath, not URL.pathname: on Windows .pathname is '/C:/...' and breaks fs calls.
+const outdir = fileURLToPath(new URL('./dist/', import.meta.url))
 
 mkdirSync(outdir, { recursive: true })
 mkdirSync(join(outdir, 'popup'), { recursive: true })
 
 const sharedConfig = {
+  absWorkingDir: root,
   bundle: true,
   platform: 'browser',
   target: ['chrome120'],
