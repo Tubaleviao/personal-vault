@@ -338,6 +338,18 @@ async function handleMessage(
     return
   }
 
+  if (message.type === 'LIST_CREDENTIALS') {
+    if (!session) { sendResponse({ type: 'VAULT_LOCKED' }); return }
+    const credentials = session.vault.listClaims()
+      .filter(c => c.type === CREDENTIAL_CLAIM_TYPE)
+      .map(c => {
+        const v = c.value as CredentialValue
+        return { claimId: c.id, origin: v.origin, username: v.username }
+      })
+    sendResponse({ type: 'CREDENTIALS_LIST', credentials })
+    return
+  }
+
   if (message.type === 'REVOKE_APPROVAL') {
     const approvals = await loadApprovals()
     // Mark as revoked (tombstone) rather than deleting so APPROVAL_REVOKED can be sent on revisit

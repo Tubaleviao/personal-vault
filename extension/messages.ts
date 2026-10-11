@@ -83,6 +83,11 @@ export interface MsgListApprovals {
   type: 'LIST_APPROVALS'
 }
 
+/** Popup requests the saved credentials (origin + username only; never passwords). */
+export interface MsgListCredentials {
+  type: 'LIST_CREDENTIALS'
+}
+
 /** Popup requests revocation of a specific site approval. */
 export interface MsgRevokeApproval {
   type: 'REVOKE_APPROVAL'
@@ -128,6 +133,11 @@ export interface MsgCreateResult {
 export interface MsgApprovalsListResult {
   type: 'APPROVALS_LIST'
   approvals: SiteApproval[]
+}
+
+export interface MsgCredentialsListResult {
+  type: 'CREDENTIALS_LIST'
+  credentials: CredentialEntry[]
 }
 
 export interface MsgVaultStatus {
@@ -391,6 +401,7 @@ export type BackgroundToContent =
 
 export type PopupToBackground =
   | MsgListApprovals
+  | MsgListCredentials
   | MsgRevokeApproval
   | MsgGetVaultStatus
   | MsgUnlockVault
@@ -406,6 +417,7 @@ export type PopupToBackground =
 
 export type BackgroundToPopup =
   | MsgApprovalsListResult
+  | MsgCredentialsListResult
   | MsgVaultStatus
   | MsgUnlockResult
   | MsgCreateResult
