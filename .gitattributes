@@ -5,3 +5,16 @@
 *.png binary
 *.ico binary
 *.icns binary
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.wxs text eol=crlf
+*.nsi text eol=crlf
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.pck binary
+*.pkpass binary

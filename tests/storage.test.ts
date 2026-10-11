@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, writeFile, readdir, chmod, symlink, lstat } from 'node:fs/promises'
-import { mkdtempSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -20,6 +20,7 @@ const NO_SYMLINK = 'symlinks not permitted on this system'
 const canSymlink = (() => {
   const d = mkdtempSync(join(tmpdir(), 'vs-sl-'))
   try { symlinkSync(d, join(d, 'l')); return true } catch { return false }
+  finally { rmSync(d, { recursive: true, force: true }) }
 })()
 
 async function code(p: Promise<unknown>): Promise<string> {
