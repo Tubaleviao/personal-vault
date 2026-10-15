@@ -227,6 +227,45 @@ A merge is needed when, at sync time, **both** the local copy and the external c
 
 ---
 
+## Phase 3.7 — Internationalization (i18n)
+
+Translation support is mandatory for every project (workspace rule). The extension popup,
+approval prompts, desktop app and verifier page are English-only, and the form filler only
+recognizes English field labels — a Brazilian checkout form ("Nome", "Sobrenome", "CEP",
+"CPF") is filled worse than an English one. This phase fixes both: translated UI, and
+locale-aware field matching. Adding a language afterwards is data-only.
+
+### What to build
+
+- **Extension:** `extension/_locales/{en,pt_BR}/messages.json` with `chrome.i18n`;
+  `manifest.json` name/description use `__MSG_*__` (also gives the Chrome Web Store listing of
+  Phase 3.6 a pt-BR version); popup, approval and options UIs read every string from the
+  catalog.
+- **Desktop app (Tauri) and verifier page:** one shared message catalog (`src/i18n/`) with
+  `en` and `pt-BR`, a `t(key, params)` helper, locale from saved preference → browser/OS →
+  `en`, and a language selector in settings.
+- **Formatting:** dates (audit log, grant expiry) and numbers through `Intl` for the active
+  locale.
+- **Form filler:** field-matching synonyms move from code into per-locale data
+  (`src/form-filler/locales/*.json`), with pt-BR labels and Brazilian fields (CPF, CEP,
+  telefone with DDD) mapped to vault claims.
+- **Errors:** modules throw error codes, the UI maps codes to translated messages. No English
+  text crosses the core/UI boundary.
+
+### Acceptance criteria
+
+- [ ] Test: every locale catalog (extension and app) has the same key set as `en`, no empty
+  values; every `__MSG_*__` in the manifest exists.
+- [ ] Test (lint script in CI): no string literal rendered in extension/app UI outside the
+  catalog, with an allow-list for non-text values.
+- [ ] Test: the form filler matches pt-BR fixture forms (name, surname, email, phone, CEP, CPF,
+  address) with the same accuracy as the English fixtures.
+- [ ] Test: switching locale re-renders the popup in pt-BR; unsupported locale falls back to
+  `en`; audit-log dates format per locale.
+- [ ] CI green.
+
+---
+
 ## Phase 4 — Validation
 
 **Step 4.1 — Dogfood.** Use it for every form/application you fill for a month. Log friction.
