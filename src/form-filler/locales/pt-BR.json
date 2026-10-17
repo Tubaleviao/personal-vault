@@ -48,7 +48,6 @@
     "selectors": [
       "input[name*=\"telefone\"]",
       "input[name*=\"celular\"]",
-      "input[name*=\"fone\"]",
       "input[name*=\"whatsapp\"]"
     ],
     "autocomplete": [],
@@ -116,7 +115,7 @@
   "schema:postalCode": {
     "selectors": [
       "input[name=\"cep\"]",
-      "input[name*=\"cep\"]"
+      "input[id=\"cep\"]"
     ],
     "autocomplete": [],
     "keywords": [

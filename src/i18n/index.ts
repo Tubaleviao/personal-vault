@@ -114,6 +114,6 @@ export function errorMessage(tr: Translator, code: string | undefined | null, de
   const i = code.indexOf(':')
   if (i > 0) { detail = detail ?? code.slice(i + 1); code = code.slice(0, i) }
   const key = `error.${code}`
-  const msg = tr.t(key, { detail: detail ?? '' })
+  const msg = tr.t(key, { detail: detail ?? '' }).trim()
   return msg === key ? tr.t('error.UNKNOWN') + (detail ? `: ${detail}` : '') : msg
 }

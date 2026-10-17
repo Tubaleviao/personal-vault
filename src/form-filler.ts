@@ -109,6 +109,21 @@ function containsSequence(tokens: string[], seq: string[]): boolean {
   return false
 }
 
+/** Input types that never take a personal-data value (a password or checkbox must not be auto-filled). */
+export const NON_FILLABLE_TYPES = new Set([
+  'password', 'checkbox', 'radio', 'submit', 'button', 'reset', 'file', 'image', 'hidden', 'range', 'color',
+])
+
+/** Words that turn a generic label ("Nome da mãe", "Company name") into a different field. */
+const QUALIFIER_TOKENS = new Set([
+  'mae', 'pai', 'empresa', 'usuario', 'user', 'username', 'login', 'cartao', 'card', 'company',
+  'mother', 'father', 'civil', 'nascimento', 'birth', 'birthplace', 'conjuge', 'spouse', 'password', 'senha',
+])
+const PLACE_TOKENS = new Set(['cidade', 'city', 'estado', 'state', 'municipio', 'pais', 'country'])
+const QUALIFIABLE_TYPES = new Set([
+  'schema:givenName', 'schema:familyName', 'schema:name', 'schema:addressLocality', 'schema:addressRegion',
+])
+
 const KEYWORD_INDEX = CLAIM_TYPE_ORDER.map(claimType => ({
   claimType,
   keywords: uniq(Object.values(FIELD_LOCALES).flatMap(l => l[claimType]?.keywords ?? [])).map(tokenize),
@@ -121,6 +136,7 @@ const KEYWORD_INDEX = CLAIM_TYPE_ORDER.map(claimType => ({
  * Returns null when nothing matches.
  */
 export function classifyField(h: FieldHints): string | null {
+  if (h.type && NON_FILLABLE_TYPES.has(h.type)) return null
   if (h.autocomplete) {
     const toks = h.autocomplete.split(' ')
     for (const rule of FILL_RULES) {
@@ -131,15 +147,21 @@ export function classifyField(h: FieldHints): string | null {
   if (h.type === 'tel') return 'schema:telephone'
 
   const sources = [h.name, h.id, h.label, h.placeholder].map(tokenize).filter(t => t.length > 0)
+  const vetoed = sources.some(tokens => tokens.some(t => QUALIFIER_TOKENS.has(t)))
+  // "Cidade de nascimento" asks for a place of birth, not a date.
+  const birthPlace = sources.some(tokens => tokens.some(t => PLACE_TOKENS.has(t)))
   let best: { claimType: string; score: number } | null = null
+  let ambiguous = false
   for (const { claimType, keywords } of KEYWORD_INDEX) {
+    if (vetoed && QUALIFIABLE_TYPES.has(claimType)) continue
+    if (birthPlace && claimType === 'schema:birthDate') continue
     for (const kw of keywords) {
-      if (sources.some(tokens => containsSequence(tokens, kw)) && (!best || kw.length > best.score)) {
-        best = { claimType, score: kw.length }
-      }
+      if (!sources.some(tokens => containsSequence(tokens, kw))) continue
+      if (!best || kw.length > best.score) { best = { claimType, score: kw.length }; ambiguous = false }
+      else if (kw.length === best.score && claimType !== best.claimType) ambiguous = true
     }
   }
-  return best?.claimType ?? null
+  return best && !ambiguous ? best.claimType : null
 }
 
 // ── FillMap ───────────────────────────────────────────────────────────────────

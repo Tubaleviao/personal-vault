@@ -169,7 +169,7 @@ function matchAvailableClaimTypes(
         return false
       })
 
-      return autocompleteMatch || selectorMatch
+      return autocompleteMatch || selectorMatch || field.claimType === rule.claimType
     })
 
     if (hasMatchingField) matched.add(rule.claimType)

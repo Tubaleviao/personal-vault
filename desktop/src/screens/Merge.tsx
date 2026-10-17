@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import type { Vault, PersistedVault, MergeSummary } from '@vault/vault'
+import type { Vault, PersistedVault } from '@vault/vault'
+import { mergeOrImport, type MergeChanges } from '@vault/merge'
 import { Vault as VaultClass } from '@vault/vault'
 import { listVaultFiles, readVaultFile, writeVaultFile, setActiveVaultName, deleteVaultFile } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
@@ -38,7 +39,7 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
   }, [activeVaultName])
 
   /** Describe changes a merge made beyond adding claims (deletions, overwrites, revoked grants). */
-  const describeChanges = (s: MergeSummary): string => {
+  const describeChanges = (s: MergeChanges): string => {
     const parts: string[] = []
     if (s.deleted > 0) parts.push(t('desktop.merge_note_deleted', { count: s.deleted, n: formatNumber(s.deleted) }))
     if (s.remoteWins > 0) parts.push(t('desktop.merge_note_replaced', { count: s.remoteWins, n: formatNumber(s.remoteWins) }))
@@ -69,16 +70,9 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
       let added = 0
       let note = ''
       try {
-        // Same owner: full merge. Different owners: import claims one by one.
-        if (vault.owner.id === other.owner.id) {
-          const summary: MergeSummary = vault.mergeFrom(other)
-          added = summary.onlyRemote
-          note = describeChanges(summary)
-        } else {
-          const before = vault.listClaims().length
-          for (const claim of other.listClaims()) vault.importClaim(claim)
-          added = Math.max(0, vault.listClaims().length - before)
-        }
+        const res = mergeOrImport(vault, other)
+        added = res.added
+        note = describeChanges(res.changes)
       } finally {
         other.lock().catch(() => { /* best effort */ })
       }

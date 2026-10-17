@@ -24,6 +24,8 @@ export interface DetectedField {
   autocomplete: string | null
   name: string | null
   inputType: string
+  /** Claim type chosen by the content script's locale-aware classifier (label/placeholder/name), if any. */
+  claimType?: string | null
 }
 
 /** Content script requests the fill map for an already-approved site. */

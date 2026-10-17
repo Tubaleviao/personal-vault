@@ -20,13 +20,15 @@ const t = (key: string, params?: Params) => tr.t(`popup.${key}`, params)
 const err = (code: string | undefined | null) => errorMessage(tr, code)
 
 /** Claim/merge summary: "3 new claims" + optional change counts, rendered per locale. */
-function mergeSummary(added: number, changes?: { deleted: number; remoteWins: number; grantsRevoked: number }): string {
-  const base = added > 0 ? t('mergedClaims', { count: added }) : t('noNewClaims')
+function changeSuffix(changes?: { deleted: number; remoteWins: number; grantsRevoked: number }): string {
   const parts: string[] = []
   if (changes?.deleted) parts.push(t('changeDeleted', { count: changes.deleted }))
   if (changes?.remoteWins) parts.push(t('changeReplaced', { count: changes.remoteWins }))
   if (changes?.grantsRevoked) parts.push(t('changeGrantsRevoked', { count: changes.grantsRevoked }))
-  return parts.length ? `${base} (${parts.join(', ')})` : base
+  return parts.length ? ` (${parts.join(', ')})` : ''
+}
+function mergeSummary(added: number, changes?: { deleted: number; remoteWins: number; grantsRevoked: number }): string {
+  return (added > 0 ? t('mergedClaims', { count: added }) : t('noNewClaims')) + changeSuffix(changes)
 }
 
 async function send<T extends BackgroundToPopup>(msg: PopupToBackground): Promise<T | null> {
@@ -632,7 +634,7 @@ function mountFileImport(container: HTMLElement, unlocked: boolean) {
       }
       status.style.color = '#22c55e'
       if (res.type === 'MERGE_RESULT') {
-        status.textContent = `${t('imported', { count: res.added })}${res.changes ? mergeSummary(0, res.changes).replace(t('noNewClaims'), '') : ''}`
+        status.textContent = `${t('imported', { count: res.added })}${changeSuffix(res.changes)}`
       } else {
         await init()
       }
@@ -682,7 +684,8 @@ async function setLocale(locale: string) {
   await saveLocale(locale)
   await startI18n()
   mountFileImports()
-  await init()
+  // The one-time recovery phrase must stay on screen; init() would swap the view and lose it.
+  if (mnemonicPanel.style.display !== 'block') await init()
   await updateNativeBadge()
 }
 

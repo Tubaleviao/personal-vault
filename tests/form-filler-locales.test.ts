@@ -93,3 +93,20 @@ test('buildFillMap emits a taxID (CPF) entry', () => {
   assert.equal(map.length, 1)
   assert.equal(map[0].value, '123.456.789-09')
 })
+
+test('classifyField never classifies password/checkbox inputs', () => {
+  assert.equal(classifyField({ type: 'password', placeholder: 'Email password' }), null)
+  assert.equal(classifyField({ type: 'checkbox', name: 'accept_terms', label: 'Nome' }), null)
+})
+
+test('classifyField does not map qualified labels to generic fields', () => {
+  for (const label of ['Nome da empresa', 'Nome da mãe', 'Nome de usuário', 'Nome no cartão', 'Estado civil', 'Cidade de nascimento']) {
+    const r = classifyField({ type: 'text', label })
+    assert.ok(r !== 'schema:givenName' && r !== 'schema:addressRegion' && r !== 'schema:birthDate' && r !== 'schema:addressLocality', `${label} -> ${r}`)
+  }
+})
+
+test('classifyField still classifies plain pt-BR labels', () => {
+  assert.equal(classifyField({ type: 'text', label: 'Sobrenome' }), 'schema:familyName')
+  assert.equal(classifyField({ type: 'text', label: 'CPF' }), 'schema:taxID')
+})

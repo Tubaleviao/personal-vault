@@ -17,7 +17,7 @@ import type {
   MsgFormDetected, DetectedField,
 } from './messages'
 import type { FillMap, CredentialEntry, FieldHints } from '../src/form-filler'
-import { FILL_RULES, classifyField } from '../src/form-filler'
+import { FILL_RULES, NON_FILLABLE_TYPES, classifyField } from '../src/form-filler'
 import { createTranslator, type Translator } from '../src/i18n'
 import { loadTranslator, claimLabel } from './i18n'
 
@@ -48,12 +48,14 @@ function detectFields(): DetectedField[] {
       ? autocomplete.split(' ').some(token => KNOWN_AUTOCOMPLETE.has(token))
       : false
 
-    if (matchesSelector || matchesAutocomplete || classifyField(fieldHints(el)) !== null) {
+    const claimType = classifyField(fieldHints(el))
+    if (matchesSelector || matchesAutocomplete || claimType !== null) {
       found.push({
         selector: buildSelector(el),
         autocomplete,
         name,
         inputType,
+        claimType,
       })
     }
   }
@@ -81,8 +83,9 @@ function fieldHints(el: HTMLInputElement | HTMLSelectElement): FieldHints {
 function findFillTarget(entry: FillMap[number]): Element | null {
   for (const sel of entry.selectors) {
     try {
-      const el = document.querySelector(sel)
-      if (el) return el
+      for (const el of document.querySelectorAll(sel)) {
+        if (!(el instanceof HTMLInputElement && NON_FILLABLE_TYPES.has(el.type))) return el
+      }
     } catch { /* bad selector */ }
   }
   const candidates = document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input:not([type="hidden"]), select')
