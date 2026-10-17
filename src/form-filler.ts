@@ -119,6 +119,11 @@ const QUALIFIER_TOKENS = new Set([
   'mae', 'pai', 'empresa', 'usuario', 'user', 'username', 'login', 'cartao', 'card', 'company',
   'mother', 'father', 'civil', 'nascimento', 'birth', 'birthplace', 'conjuge', 'spouse', 'password', 'senha',
 ])
+/** "Country code", "Phone type", "Extension" are sibling fields: never fill them with the full country / number. */
+const SUB_FIELD_TOKENS = new Set([
+  'code', 'codigo', 'type', 'tipo', 'extension', 'ramal', 'prefix', 'prefixo', 'dial',
+])
+const SUB_FIELD_TYPES = new Set(['schema:telephone', 'schema:addressCountry'])
 const PLACE_TOKENS = new Set(['cidade', 'city', 'estado', 'state', 'municipio', 'pais', 'country'])
 const QUALIFIABLE_TYPES = new Set([
   'schema:givenName', 'schema:familyName', 'schema:name', 'schema:addressLocality', 'schema:addressRegion',
@@ -149,11 +154,13 @@ export function classifyField(h: FieldHints): string | null {
   const sources = [h.name, h.id, h.label, h.placeholder].map(tokenize).filter(t => t.length > 0)
   const vetoed = sources.some(tokens => tokens.some(t => QUALIFIER_TOKENS.has(t)))
   // "Cidade de nascimento" asks for a place of birth, not a date.
+  const subField = sources.some(tokens => tokens.some(t => SUB_FIELD_TOKENS.has(t)))
   const birthPlace = sources.some(tokens => tokens.some(t => PLACE_TOKENS.has(t)))
   let best: { claimType: string; score: number } | null = null
   let ambiguous = false
   for (const { claimType, keywords } of KEYWORD_INDEX) {
     if (vetoed && QUALIFIABLE_TYPES.has(claimType)) continue
+    if (subField && SUB_FIELD_TYPES.has(claimType)) continue
     if (birthPlace && claimType === 'schema:birthDate') continue
     for (const kw of keywords) {
       if (!sources.some(tokens => containsSequence(tokens, kw))) continue

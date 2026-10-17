@@ -24,10 +24,10 @@ function ns(prefix: string, data: Flat): Flat {
 export const CATALOGS: Record<string, Flat> = {
   'en': {
     ...ns('common', enCommon), ...ns('popup', enPopup), ...ns('content', enContent),
-    ...ns('desktop', enDesktop), ...ns('error', enError),
+    ...enDesktop, ...ns('error', enError),
   },
   'pt-BR': {
     ...ns('common', ptCommon), ...ns('popup', ptPopup), ...ns('content', ptContent),
-    ...ns('desktop', ptDesktop), ...ns('error', ptError),
+    ...ptDesktop, ...ns('error', ptError),
   },
 }

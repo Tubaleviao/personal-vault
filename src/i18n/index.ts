@@ -80,7 +80,7 @@ export function createTranslator(locale: string = DEFAULT_LOCALE): Translator {
     t(key, params) {
       let msg: string | undefined
       if (params && typeof params.count === 'number') {
-        msg = lookup(`${key}_${rules.select(params.count)}`)
+        msg = lookup(`${key}_${rules.select(params.count)}`) ?? lookup(`${key}_other`)
       }
       msg ??= lookup(key)
       return msg === undefined ? key : interpolate(msg, params)
@@ -110,10 +110,10 @@ export function codedError(code: ErrorCode, detail?: string): string {
 
 /** Render an error code (optionally carrying a detail) as a translated message. */
 export function errorMessage(tr: Translator, code: string | undefined | null, detail?: string): string {
-  if (!code) return tr.t('error.UNKNOWN')
+  if (!code) return tr.t('error.UNKNOWN', { detail: '' }).trim()
   const i = code.indexOf(':')
   if (i > 0) { detail = detail ?? code.slice(i + 1); code = code.slice(0, i) }
   const key = `error.${code}`
   const msg = tr.t(key, { detail: detail ?? '' }).trim()
-  return msg === key ? tr.t('error.UNKNOWN') + (detail ? `: ${detail}` : '') : msg
+  return msg === key ? tr.t('error.UNKNOWN', { detail: detail ?? '' }).trim() : msg
 }

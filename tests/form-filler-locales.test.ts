@@ -110,3 +110,10 @@ test('classifyField still classifies plain pt-BR labels', () => {
   assert.equal(classifyField({ type: 'text', label: 'Sobrenome' }), 'schema:familyName')
   assert.equal(classifyField({ type: 'text', label: 'CPF' }), 'schema:taxID')
 })
+
+test('sibling sub-fields are not classified as phone/country', () => {
+  assert.equal(classifyField({ label: 'Country code' }), null)
+  assert.equal(classifyField({ label: 'Phone type' }), null)
+  assert.equal(classifyField({ label: 'Telephone extension' }), null)
+  assert.equal(classifyField({ label: 'Telephone' }), 'schema:telephone')
+})

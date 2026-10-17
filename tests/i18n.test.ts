@@ -102,6 +102,9 @@ test('error codes render translated, with optional detail', () => {
   assert.match(errorMessage(pt, codedError('UNKNOWN', 'boom')), /boom/)
   assert.equal(errorMessage(createTranslator('en'), 'NO_VAULT'), 'No vault found')
   assert.match(errorMessage(pt, 'NOT_A_CODE'), /Algo deu errado/)
+  assert.doesNotMatch(errorMessage(pt, 'NOT_A_CODE'), /[{}]/)
+  assert.doesNotMatch(errorMessage(pt, undefined), /[{}]/)
+  assert.equal(errorMessage(pt, 'FOO:bar'), 'Algo deu errado. bar')
 })
 
 // ── Popup re-render ───────────────────────────────────────────────────────────
@@ -184,4 +187,12 @@ test('lint: detects hard-coded strings, ignores translated and non-text', () => 
   assert.deepEqual(checkFile('x.tsx', `<button>{t('desktop.save')}</button>`), [])
   assert.equal(checkFile('x.html', `<h2>Hello world</h2><input placeholder="Type here">`).length, 2)
   assert.deepEqual(checkFile('x.html', `<h2 data-i18n="a.b">Hello</h2><input placeholder="x" data-i18n-placeholder="a.c">`), [])
+})
+
+test('desktop catalog keys resolve (no double prefix)', () => {
+  for (const loc of ['en', 'pt-BR']) {
+    const tr = createTranslator(loc)
+    assert.notEqual(tr.t('desktop.nav_claims'), 'desktop.nav_claims')
+    assert.notEqual(tr.t('desktop.app_name'), 'desktop.app_name')
+  }
 })

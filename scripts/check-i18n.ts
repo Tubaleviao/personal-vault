@@ -50,7 +50,7 @@ export function checkScript(file: string, src: string): Finding[] {
   // Skip comment-only lines by blanking them (keeps offsets stable).
   const code = src.replace(/^\s*(\/\/|\*|\/\*).*$/gm, m => ' '.repeat(m.length))
 
-  for (const m of code.matchAll(/\.(?:textContent|innerText|placeholder|title|alt)\s*\+?=\s*([^\n;]*)/g)) {
+  for (const m of code.matchAll(/\.(?:textContent|innerText|innerHTML|outerHTML|placeholder|title|alt)\s*\+?=\s*([^\n;]*)/g)) {
     addIf(findings, file, src, m.index!, literalsIn(m[1]))
   }
   for (const m of code.matchAll(/setAttribute\(\s*['"](?:title|placeholder|aria-label|alt)['"]\s*,\s*([^\n]*)\)/g)) {
