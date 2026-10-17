@@ -24,6 +24,8 @@ export interface DetectedField {
   autocomplete: string | null
   name: string | null
   inputType: string
+  /** Claim type chosen by the content script's locale-aware classifier (label/placeholder/name), if any. */
+  claimType?: string | null
 }
 
 /** Content script requests the fill map for an already-approved site. */
@@ -262,8 +264,9 @@ export interface MsgMergeResult {
   type: 'MERGE_RESULT'
   ok: boolean
   added: number
-  /** Other changes the merge made (deletions, replaced claims, revoked grants). */
-  note?: string
+  /** Other changes the merge made (deletions, replaced claims, revoked grants); the popup renders them. */
+  changes?: { deleted: number; remoteWins: number; grantsRevoked: number }
+  /** Error code (see src/i18n ERROR_CODES), optionally `CODE:detail`. Never English text. */
   error?: string
 }
 

@@ -1,0 +1,16 @@
+{
+  "claim.givenName": "Nome",
+  "claim.familyName": "Sobrenome",
+  "claim.name": "Nome completo",
+  "claim.email": "E-mail",
+  "claim.telephone": "Telefone",
+  "claim.birthDate": "Data de nascimento",
+  "claim.streetAddress": "Endereço",
+  "claim.addressLocality": "Cidade",
+  "claim.addressRegion": "Estado",
+  "claim.postalCode": "CEP",
+  "claim.addressCountry": "País",
+  "claim.jobTitle": "Cargo",
+  "claim.worksFor": "Empresa",
+  "claim.taxID": "CPF"
+}

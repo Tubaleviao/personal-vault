@@ -1,0 +1,176 @@
+{
+  "schema:givenName": {
+    "selectors": [
+      "input[name=\"nome\"]",
+      "input[name=\"primeiro_nome\"]",
+      "input[name=\"primeironome\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "nome",
+      "primeiro nome"
+    ]
+  },
+  "schema:familyName": {
+    "selectors": [
+      "input[name=\"sobrenome\"]",
+      "input[name=\"ultimo_nome\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "sobrenome",
+      "ultimo nome",
+      "ultimo sobrenome"
+    ]
+  },
+  "schema:name": {
+    "selectors": [
+      "input[name=\"nome_completo\"]",
+      "input[name=\"nomecompleto\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "nome completo",
+      "seu nome completo"
+    ]
+  },
+  "schema:email": {
+    "selectors": [],
+    "autocomplete": [],
+    "keywords": [
+      "e-mail",
+      "email",
+      "endereco de e-mail",
+      "correio eletronico"
+    ]
+  },
+  "schema:telephone": {
+    "selectors": [
+      "input[name*=\"telefone\"]",
+      "input[name*=\"celular\"]",
+      "input[name*=\"whatsapp\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "telefone",
+      "telefone com ddd",
+      "celular",
+      "fone",
+      "whatsapp",
+      "telefone celular"
+    ]
+  },
+  "schema:birthDate": {
+    "selectors": [
+      "input[name*=\"nascimento\"]",
+      "input[name=\"data_nascimento\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "data de nascimento",
+      "nascimento",
+      "aniversario"
+    ]
+  },
+  "schema:streetAddress": {
+    "selectors": [
+      "input[name=\"endereco\"]",
+      "input[name=\"logradouro\"]",
+      "input[name=\"rua\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "endereco",
+      "logradouro",
+      "rua",
+      "avenida",
+      "endereco residencial"
+    ]
+  },
+  "schema:addressLocality": {
+    "selectors": [
+      "input[name=\"cidade\"]",
+      "input[name*=\"municipio\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "cidade",
+      "municipio"
+    ]
+  },
+  "schema:addressRegion": {
+    "selectors": [
+      "input[name=\"estado\"]",
+      "select[name=\"estado\"]",
+      "input[name=\"uf\"]",
+      "select[name=\"uf\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "estado",
+      "uf",
+      "unidade federativa"
+    ]
+  },
+  "schema:postalCode": {
+    "selectors": [
+      "input[name=\"cep\"]",
+      "input[id=\"cep\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "cep",
+      "codigo postal"
+    ]
+  },
+  "schema:addressCountry": {
+    "selectors": [
+      "input[name=\"pais\"]",
+      "select[name=\"pais\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "pais",
+      "nacionalidade"
+    ]
+  },
+  "schema:jobTitle": {
+    "selectors": [
+      "input[name=\"cargo\"]",
+      "input[name*=\"profissao\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "cargo",
+      "profissao",
+      "ocupacao",
+      "funcao"
+    ]
+  },
+  "schema:worksFor": {
+    "selectors": [
+      "input[name=\"empresa\"]",
+      "input[name*=\"empregador\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "empresa",
+      "empregador",
+      "organizacao",
+      "local de trabalho"
+    ]
+  },
+  "schema:taxID": {
+    "selectors": [
+      "input[name=\"cpf\"]",
+      "input[name*=\"cpf\"]",
+      "input[id*=\"cpf\"]"
+    ],
+    "autocomplete": [],
+    "keywords": [
+      "cpf",
+      "numero do cpf",
+      "cpf do titular"
+    ]
+  }
+}

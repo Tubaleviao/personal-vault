@@ -8,6 +8,8 @@ import {
   readVaultFileSynced, adoptStorageCopy, writeVaultFile, listVaultFiles, setActiveVaultName, vaultFileExists,
 } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
+import { useI18n, LanguageSelect } from '../i18n'
+import { UiError } from '../uiError'
 
 /**
  * Generate a unique vault filename.
@@ -39,6 +41,7 @@ interface Props {
 type Mode = 'detect' | 'pick' | 'create' | 'open'
 
 export default function Unlock({ onUnlocked }: Props) {
+  const { t, formatNumber, describeError } = useI18n()
   const [mode, setMode] = useState<Mode>('detect')
   const [passphrase, setPassphrase] = useState('')
   const [mnemonic, setMnemonic] = useState('')
@@ -51,7 +54,7 @@ export default function Unlock({ onUnlocked }: Props) {
     persisted: PersistedVault
   } | null>(null)
 
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
 
   // Discover vault files on mount to decide the initial mode.
@@ -105,11 +108,11 @@ export default function Unlock({ onUnlocked }: Props) {
       await writeVaultFile(persisted)
       setPendingCreate({ mnemonic: bundle.mnemonic, persisted })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err)
     } finally {
       setBusy(false)
     }
-  }, [passphrase, displayName, busy])
+  }, [passphrase, displayName, busy, vaultFiles])
 
   const handleContinueAfterMnemonic = useCallback(async () => {
     if (!pendingCreate || busy) return
@@ -119,7 +122,7 @@ export default function Unlock({ onUnlocked }: Props) {
       const vault = await VaultClass.open(pendingCreate.persisted, passphrase)
       onUnlocked(vault, pendingCreate.persisted)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err)
     } finally {
       setBusy(false)
     }
@@ -135,7 +138,7 @@ export default function Unlock({ onUnlocked }: Props) {
     try {
       const synced = await readVaultFileSynced()
       let persisted = synced.persisted
-      if (!persisted) throw new Error('No vault file found. Create a new vault instead.')
+      if (!persisted) throw new UiError('desktop.err_no_vault_file')
       let vault
       try {
         vault = await VaultClass.open(persisted, passphrase)
@@ -150,35 +153,36 @@ export default function Unlock({ onUnlocked }: Props) {
       if (synced.fromStorage && persisted === synced.persisted) {
         try { await adoptStorageCopy(persisted) } catch (adoptErr) {
           // This screen unmounts on success, so surface the warning outside it.
-          window.alert(`Unlocked from storage copy, but could not update the local file: ${adoptErr instanceof Error ? adoptErr.message : String(adoptErr)}`)
+          window.alert(t('desktop.alert_adopt_failed', { detail: describeError(adoptErr) }))
         }
       }
       if (mnemonic.trim()) {
         const bundle = await restoreFromMnemonic(mnemonic)
-        if (!bundle) throw new Error('Invalid recovery phrase.')
+        if (!bundle) throw new UiError('desktop.err_invalid_phrase')
         ;(vault as unknown as { _recoveryKeypair: unknown })._recoveryKeypair = bundle.keypair
       }
       onUnlocked(vault, persisted)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err)
     } finally {
       setBusy(false)
     }
-  }, [passphrase, mnemonic, busy, onUnlocked])
+  }, [passphrase, mnemonic, busy, onUnlocked, t, describeError])
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
   if (mode === 'detect') {
-    return <div style={styles.center}><div style={styles.spinner}>Loading…</div></div>
+    return <div style={styles.center}><div style={styles.spinner}>{t('desktop.loading')}</div></div>
   }
 
   if (mode === 'pick') {
     return (
       <div style={styles.center}>
+        <div style={styles.langCorner}><LanguageSelect style={styles.langSelect} /></div>
         <div style={styles.card}>
-          <h1 style={styles.title}>Personal Vault</h1>
+          <h1 style={styles.title}>{t('desktop.app_name')}</h1>
           <p style={styles.subtitle}>
-            {vaultFiles.length === 1 ? 'One vault found — click it to unlock' : `${vaultFiles.length} vaults found — choose one to unlock`}
+            {t('desktop.unlock_vaults_found', { count: vaultFiles.length, n: formatNumber(vaultFiles.length) })}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {vaultFiles.map(file => (
@@ -189,14 +193,13 @@ export default function Unlock({ onUnlocked }: Props) {
               >
                 <div style={styles.pickerName}>{file.name}</div>
                 <div style={styles.pickerMeta}>
-                  Revision {file.vault.header.sequenceNumber ?? 0}
-                  {' · '}owner {file.vault.header.ownerId.slice(0, 8)}
+                  {t('desktop.unlock_revision_owner', { revision: formatNumber(file.vault.header.sequenceNumber ?? 0), owner: file.vault.header.ownerId.slice(0, 8) })}
                 </div>
               </button>
             ))}
           </div>
           <button style={styles.switchLink} onClick={() => setMode('create')}>
-            Create a new vault instead
+            {t('desktop.unlock_create_instead')}
           </button>
         </div>
       </div>
@@ -207,18 +210,19 @@ export default function Unlock({ onUnlocked }: Props) {
   if (pendingCreate) {
     return (
       <div style={styles.center}>
+        <div style={styles.langCorner}><LanguageSelect style={styles.langSelect} /></div>
         <div style={styles.card}>
-          <h1 style={styles.title}>Personal Vault</h1>
-          <p style={styles.subtitle}>Your vault has been created</p>
+          <h1 style={styles.title}>{t('desktop.app_name')}</h1>
+          <p style={styles.subtitle}>{t('desktop.unlock_created')}</p>
           <div style={styles.mnemonicBox}>
             <p style={styles.mnemonicLabel}>
-              Write down your recovery phrase — it will not be shown again:
+              {t('desktop.unlock_write_phrase')}
             </p>
             <p style={styles.mnemonicPhrase}>{pendingCreate.mnemonic}</p>
           </div>
-          {error && <div style={styles.error}>{error}</div>}
+          {error != null && <div style={styles.error}>{describeError(error)}</div>}
           <button style={styles.btn} onClick={() => { void handleContinueAfterMnemonic() }} disabled={busy}>
-            {busy ? 'Please wait…' : 'I have written it down — Continue'}
+            {busy ? t('desktop.please_wait') : t('desktop.unlock_written_continue')}
           </button>
         </div>
       </div>
@@ -227,10 +231,11 @@ export default function Unlock({ onUnlocked }: Props) {
 
   return (
     <div style={styles.center}>
+      <div style={styles.langCorner}><LanguageSelect style={styles.langSelect} /></div>
       <div style={styles.card}>
-        <h1 style={styles.title}>Personal Vault</h1>
+        <h1 style={styles.title}>{t('desktop.app_name')}</h1>
         <p style={styles.subtitle}>
-          {mode === 'create' ? 'Create a new vault' : 'Unlock your vault'}
+          {mode === 'create' ? t('desktop.unlock_create_title') : t('desktop.unlock_title')}
         </p>
 
         <form
@@ -241,7 +246,7 @@ export default function Unlock({ onUnlocked }: Props) {
             <input
               style={styles.input}
               type="text"
-              placeholder="Display name (optional)"
+              placeholder={t('desktop.unlock_display_name')}
               value={displayName}
               onChange={e => setDisplayName(e.target.value)}
               autoComplete="name"
@@ -250,7 +255,7 @@ export default function Unlock({ onUnlocked }: Props) {
           <input
             style={styles.input}
             type="password"
-            placeholder="Passphrase"
+            placeholder={t('desktop.passphrase')}
             value={passphrase}
             onChange={e => setPassphrase(e.target.value)}
             autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
@@ -261,15 +266,15 @@ export default function Unlock({ onUnlocked }: Props) {
             <input
               style={styles.input}
               type="password"
-              placeholder="Recovery phrase (optional — needed for sync)"
+              placeholder={t('desktop.unlock_recovery_phrase')}
               value={mnemonic}
               onChange={e => setMnemonic(e.target.value)}
               autoComplete="off"
             />
           )}
-          {error && <div style={styles.error}>{error}</div>}
+          {error != null && <div style={styles.error}>{describeError(error)}</div>}
           <button style={styles.btn} type="submit" disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'create' ? 'Create vault' : 'Unlock'}
+            {busy ? t('desktop.please_wait') : mode === 'create' ? t('desktop.unlock_create_btn') : t('desktop.unlock_btn')}
           </button>
         </form>
 
@@ -280,12 +285,12 @@ export default function Unlock({ onUnlocked }: Props) {
             setError(null)
           }}
         >
-          {mode === 'create' ? 'Already have a vault? Unlock' : 'New vault? Create one'}
+          {mode === 'create' ? t('desktop.unlock_have_vault') : t('desktop.unlock_new_vault')}
         </button>
 
         {mode === 'open' && vaultFiles.length > 0 && (
           <button style={styles.switchLink} onClick={() => setMode('pick')}>
-            ← Back to vault list
+            {t('desktop.unlock_back_to_list')}
           </button>
         )}
       </div>
@@ -294,6 +299,19 @@ export default function Unlock({ onUnlocked }: Props) {
 }
 
 const styles = {
+  langCorner: {
+    position: 'absolute' as const,
+    top: 16,
+    right: 16,
+  } as React.CSSProperties,
+  langSelect: {
+    background: '#0f172a',
+    border: '1px solid #334155',
+    borderRadius: 6,
+    color: '#94a3b8',
+    fontSize: 12,
+    padding: '6px 8px',
+  } as React.CSSProperties,
   center: {
     display: 'flex',
     alignItems: 'center',

@@ -1,0 +1,15 @@
+{
+  "NO_PASSPHRASE": "No passphrase",
+  "NO_VAULT": "No vault found",
+  "VAULT_LOCKED": "Vault is locked",
+  "MNEMONIC_MISMATCH": "Recovery phrase does not match this vault",
+  "WRONG_PASSPHRASE": "Wrong passphrase",
+  "INVALID_VAULT_FILE": "The file does not appear to be a valid vault.",
+  "VAULT_FILE_UNREADABLE": "That vault file could not be opened; it may be damaged. {detail}",
+  "DESKTOP_AVAILABLE": "The desktop app is available. Import the file there, or unlock a vault and merge it.",
+  "BROWSER_VAULT_EXISTS": "A browser vault already exists. Unlock it, then import the file to merge.",
+  "ALREADY_ON_DESKTOP": "Vault is already on the desktop",
+  "DESKTOP_NOT_CONNECTED": "Desktop app not connected",
+  "SOURCE_NOT_FOUND": "No vault found at that source",
+  "UNKNOWN": "Something went wrong. {detail}"
+}

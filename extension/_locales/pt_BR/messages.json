@@ -1,0 +1,5 @@
+{
+  "extName": { "message": "Personal Vault — Preenchimento de Formulários", "description": "Nome da extensão (página da loja)" },
+  "extDescription": { "message": "Preencha formulários da web com o seu cofre pessoal. Você aprova por site e por campo. Nenhum dado é compartilhado sem o seu consentimento.", "description": "Descrição da extensão (página da loja)" },
+  "actionTitle": { "message": "Personal Vault", "description": "Dica do botão da barra de ferramentas" }
+}

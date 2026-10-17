@@ -1,0 +1,16 @@
+{
+  "appName": "Personal Vault",
+  "fillPrompt_one": "Preencher {count} campo com os dados do seu cofre?",
+  "fillPrompt_other": "Preencher {count} campos com os dados do seu cofre?",
+  "fillOnce": "Preencher uma vez",
+  "alwaysAllow": "Sempre permitir",
+  "filled_one": "O cofre preencheu {count} campo",
+  "filled_other": "O cofre preencheu {count} campos",
+  "fillCredentialsPrompt": "Preencher as credenciais salvas para {origin}?",
+  "fill": "Preencher",
+  "savePasswordPrompt": "Salvar a senha de {host}?",
+  "updatePasswordPrompt": "Atualizar a senha salva de {host}?",
+  "save": "Salvar",
+  "update": "Atualizar",
+  "notNow": "Agora não"
+}

@@ -2,6 +2,8 @@ import React, { useState, useCallback } from 'react'
 import type { Vault, Claim, PersistedVault } from '@vault/vault'
 import { writeVaultFile } from '../tauriVault'
 import { CREDENTIAL_CLAIM_TYPE } from '@vault/form-filler'
+import { useI18n } from '../i18n'
+import { UiError } from '../uiError'
 
 interface Props {
   vault: Vault
@@ -14,10 +16,11 @@ const CLAIM_TYPES = [
 ]
 
 export default function Claims({ vault, onVaultChanged }: Props) {
+  const { t, tOr, formatDate, describeError } = useI18n()
   const [claims, setClaims] = useState<Claim[]>(() => vault.listClaims().filter(c => c.type !== CREDENTIAL_CLAIM_TYPE))
   const [editing, setEditing] = useState<Claim | null>(null)
   const [adding, setAdding] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
 
   // Form state
@@ -43,7 +46,7 @@ export default function Claims({ vault, onVaultChanged }: Props) {
       setClaims(vault.listClaims().filter(c => c.type !== CREDENTIAL_CLAIM_TYPE))
       onVaultChanged(vault, persisted)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err)
     } finally {
       setBusy(false)
     }
@@ -52,8 +55,8 @@ export default function Claims({ vault, onVaultChanged }: Props) {
   const handleAdd = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     const resolvedType = type === 'custom' ? customType.trim() : type
-    if (!resolvedType) { setError('Enter a claim type.'); return }
-    if (!value.trim()) { setError('Enter a value.'); return }
+    if (!resolvedType) { setError(new UiError('desktop.claims_err_type')); return }
+    if (!value.trim()) { setError(new UiError('desktop.claims_err_value')); return }
     try {
       vault.addClaim({
         type: resolvedType,
@@ -66,7 +69,7 @@ export default function Claims({ vault, onVaultChanged }: Props) {
       await persistAndRefresh()
       resetForm()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err)
     }
   }, [vault, type, customType, value, persistAndRefresh])
 
@@ -78,19 +81,19 @@ export default function Claims({ vault, onVaultChanged }: Props) {
       await persistAndRefresh()
       resetForm()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err)
     }
   }, [vault, editing, value, persistAndRefresh])
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!window.confirm('Delete this claim?')) return
+    if (!window.confirm(t('desktop.claims_confirm_delete'))) return
     try {
       vault.deleteClaim(id)
       await persistAndRefresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err)
     }
-  }, [vault, persistAndRefresh])
+  }, [vault, persistAndRefresh, t])
 
   const startEdit = (claim: Claim) => {
     setEditing(claim)
@@ -101,25 +104,25 @@ export default function Claims({ vault, onVaultChanged }: Props) {
   return (
     <div>
       <div style={styles.header}>
-        <h2 style={styles.heading}>Claims</h2>
+        <h2 style={styles.heading}>{t('desktop.nav_claims')}</h2>
         {!adding && !editing && (
-          <button style={styles.btnPrimary} onClick={() => setAdding(true)}>+ Add claim</button>
+          <button style={styles.btnPrimary} onClick={() => setAdding(true)}>{t('desktop.claims_add_btn')}</button>
         )}
       </div>
 
       {(adding || editing) && (
         <form onSubmit={editing ? handleUpdate : handleAdd} style={styles.form}>
-          <h3 style={styles.formTitle}>{editing ? 'Edit claim' : 'Add claim'}</h3>
+          <h3 style={styles.formTitle}>{editing ? t('desktop.claims_edit_title') : t('desktop.claims_add_title')}</h3>
           {!editing && (
             <>
               <select style={styles.select} value={type} onChange={e => setType(e.target.value)}>
-                {CLAIM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {CLAIM_TYPES.map(ct => <option key={ct} value={ct}>{tOr('desktop.claim_type_', ct)}</option>)}
               </select>
               {type === 'custom' && (
                 <input
                   style={styles.input}
                   type="text"
-                  placeholder="Custom type"
+                  placeholder={t('desktop.claims_custom_type')}
                   value={customType}
                   onChange={e => setCustomType(e.target.value)}
                   required
@@ -127,45 +130,45 @@ export default function Claims({ vault, onVaultChanged }: Props) {
               )}
             </>
           )}
-          {editing && <div style={styles.editLabel}>{editing.type}</div>}
+          {editing && <div style={styles.editLabel}>{tOr('desktop.claim_type_', editing.type)}</div>}
           <input
             style={styles.input}
             type="text"
-            placeholder="Value"
+            placeholder={t('desktop.claims_value')}
             value={value}
             onChange={e => setValue(e.target.value)}
             autoFocus
             required
           />
-          {error && <div style={styles.error}>{error}</div>}
+          {error != null && <div style={styles.error}>{describeError(error)}</div>}
           <div style={styles.formRow}>
             <button style={styles.btnPrimary} type="submit" disabled={busy}>
-              {busy ? 'Saving…' : editing ? 'Save' : 'Add'}
+              {busy ? t('desktop.saving') : editing ? t('desktop.save') : t('desktop.add')}
             </button>
-            <button style={styles.btnCancel} type="button" onClick={resetForm}>Cancel</button>
+            <button style={styles.btnCancel} type="button" onClick={resetForm}>{t('desktop.cancel')}</button>
           </div>
         </form>
       )}
 
       {claims.length === 0 && !adding && (
-        <div style={styles.empty}>No claims yet. Add one to get started.</div>
+        <div style={styles.empty}>{t('desktop.claims_empty')}</div>
       )}
 
       <div style={styles.list}>
         {claims.map(claim => (
           <div key={claim.id} style={styles.card}>
             <div style={styles.cardBody}>
-              <div style={styles.claimType}>{claim.type}</div>
+              <div style={styles.claimType}>{tOr('desktop.claim_type_', claim.type)}</div>
               <div style={styles.claimValue}>{String(claim.value)}</div>
               <div style={styles.claimMeta}>
-                <span style={badgeStyle(claim.verification)}>{claim.verification}</span>
-                <span style={badgeStyle(claim.source)}>{claim.source}</span>
-                <span style={styles.metaText}>{claim.issuedAt.slice(0, 10)}</span>
+                <span style={badgeStyle(claim.verification)}>{tOr('desktop.verification_', claim.verification)}</span>
+                <span style={badgeStyle(claim.source)}>{tOr('desktop.source_', claim.source)}</span>
+                <span style={styles.metaText}>{formatDate(claim.issuedAt, { dateStyle: 'medium' })}</span>
               </div>
             </div>
             <div style={styles.cardActions}>
-              <button style={styles.iconBtn} onClick={() => startEdit(claim)}>✎</button>
-              <button style={styles.iconBtnDanger} onClick={() => { void handleDelete(claim.id) }}>✕</button>
+              <button style={styles.iconBtn} title={t('desktop.edit')} aria-label={t('desktop.edit')} onClick={() => startEdit(claim)}>✎</button>
+              <button style={styles.iconBtnDanger} title={t('desktop.delete')} aria-label={t('desktop.delete')} onClick={() => { void handleDelete(claim.id) }}>✕</button>
             </div>
           </div>
         ))}

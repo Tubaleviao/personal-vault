@@ -1,0 +1,15 @@
+{
+  "NO_PASSPHRASE": "Senha não informada",
+  "NO_VAULT": "Nenhum cofre encontrado",
+  "VAULT_LOCKED": "O cofre está bloqueado",
+  "MNEMONIC_MISMATCH": "A frase de recuperação não corresponde a este cofre",
+  "WRONG_PASSPHRASE": "Senha incorreta",
+  "INVALID_VAULT_FILE": "O arquivo não parece ser um cofre válido.",
+  "VAULT_FILE_UNREADABLE": "Não foi possível abrir esse arquivo de cofre; ele pode estar danificado. {detail}",
+  "DESKTOP_AVAILABLE": "O app desktop está disponível. Importe o arquivo por lá ou desbloqueie um cofre e mescle.",
+  "BROWSER_VAULT_EXISTS": "Já existe um cofre no navegador. Desbloqueie-o e importe o arquivo para mesclar.",
+  "ALREADY_ON_DESKTOP": "O cofre já está no desktop",
+  "DESKTOP_NOT_CONNECTED": "App desktop não conectado",
+  "SOURCE_NOT_FOUND": "Nenhum cofre encontrado nessa origem",
+  "UNKNOWN": "Algo deu errado. {detail}"
+}

@@ -1,0 +1,237 @@
+{
+  "schema:givenName": {
+    "selectors": [
+      "input[autocomplete=\"given-name\"]",
+      "input[name=\"firstname\"]",
+      "input[name=\"first_name\"]",
+      "input[name=\"first-name\"]",
+      "input[name*=\"first\"][type=\"text\"]"
+    ],
+    "autocomplete": [
+      "given-name"
+    ],
+    "keywords": [
+      "first name",
+      "given name",
+      "forename",
+      "firstname"
+    ]
+  },
+  "schema:familyName": {
+    "selectors": [
+      "input[autocomplete=\"family-name\"]",
+      "input[name=\"lastname\"]",
+      "input[name=\"last_name\"]",
+      "input[name=\"last-name\"]",
+      "input[name*=\"last\"][type=\"text\"]"
+    ],
+    "autocomplete": [
+      "family-name"
+    ],
+    "keywords": [
+      "last name",
+      "family name",
+      "surname",
+      "lastname"
+    ]
+  },
+  "schema:name": {
+    "selectors": [
+      "input[autocomplete=\"name\"]",
+      "input[name=\"fullname\"]",
+      "input[name=\"full_name\"]",
+      "input[name=\"name\"]"
+    ],
+    "autocomplete": [
+      "name"
+    ],
+    "keywords": [
+      "full name",
+      "fullname",
+      "your name"
+    ]
+  },
+  "schema:email": {
+    "selectors": [
+      "input[type=\"email\"]",
+      "input[autocomplete=\"email\"]",
+      "input[name=\"email\"]",
+      "input[name*=\"email\"]"
+    ],
+    "autocomplete": [
+      "email"
+    ],
+    "keywords": [
+      "email",
+      "e-mail",
+      "email address"
+    ]
+  },
+  "schema:telephone": {
+    "selectors": [
+      "input[type=\"tel\"]",
+      "input[autocomplete=\"tel\"]",
+      "input[name=\"phone\"]",
+      "input[name*=\"phone\"]",
+      "input[name*=\"tel\"]"
+    ],
+    "autocomplete": [
+      "tel",
+      "tel-national"
+    ],
+    "keywords": [
+      "phone",
+      "phone number",
+      "telephone",
+      "mobile",
+      "cell"
+    ]
+  },
+  "schema:birthDate": {
+    "selectors": [
+      "input[autocomplete=\"bday\"]",
+      "input[name=\"dob\"]",
+      "input[name=\"birthdate\"]",
+      "input[name=\"birth_date\"]",
+      "input[name*=\"birth\"][type=\"date\"]"
+    ],
+    "autocomplete": [
+      "bday"
+    ],
+    "keywords": [
+      "date of birth",
+      "birth date",
+      "birthday",
+      "dob"
+    ]
+  },
+  "schema:streetAddress": {
+    "selectors": [
+      "input[autocomplete=\"street-address\"]",
+      "input[autocomplete=\"address-line1\"]",
+      "input[name=\"address\"]",
+      "input[name=\"address1\"]",
+      "input[name*=\"street\"]"
+    ],
+    "autocomplete": [
+      "street-address",
+      "address-line1"
+    ],
+    "keywords": [
+      "address",
+      "street address",
+      "street",
+      "address line 1"
+    ]
+  },
+  "schema:addressLocality": {
+    "selectors": [
+      "input[autocomplete=\"address-level2\"]",
+      "input[name=\"city\"]",
+      "input[name*=\"city\"]",
+      "input[name*=\"locality\"]"
+    ],
+    "autocomplete": [
+      "address-level2"
+    ],
+    "keywords": [
+      "city",
+      "town",
+      "locality"
+    ]
+  },
+  "schema:addressRegion": {
+    "selectors": [
+      "input[autocomplete=\"address-level1\"]",
+      "input[name=\"state\"]",
+      "input[name*=\"state\"]",
+      "input[name*=\"region\"]",
+      "select[name=\"state\"]"
+    ],
+    "autocomplete": [
+      "address-level1"
+    ],
+    "keywords": [
+      "state",
+      "province",
+      "region"
+    ]
+  },
+  "schema:postalCode": {
+    "selectors": [
+      "input[autocomplete=\"postal-code\"]",
+      "input[name=\"zip\"]",
+      "input[name*=\"zip\"]",
+      "input[name*=\"postal\"]"
+    ],
+    "autocomplete": [
+      "postal-code"
+    ],
+    "keywords": [
+      "zip",
+      "zip code",
+      "postal code",
+      "postcode"
+    ]
+  },
+  "schema:addressCountry": {
+    "selectors": [
+      "input[autocomplete=\"country\"]",
+      "input[autocomplete=\"country-name\"]",
+      "select[autocomplete=\"country\"]",
+      "select[autocomplete=\"country-name\"]",
+      "input[name=\"country\"]",
+      "select[name=\"country\"]"
+    ],
+    "autocomplete": [
+      "country",
+      "country-name"
+    ],
+    "keywords": [
+      "country"
+    ]
+  },
+  "schema:jobTitle": {
+    "selectors": [
+      "input[autocomplete=\"organization-title\"]",
+      "input[name=\"title\"]",
+      "input[name=\"job_title\"]",
+      "input[name*=\"occupation\"]"
+    ],
+    "autocomplete": [
+      "organization-title"
+    ],
+    "keywords": [
+      "job title",
+      "occupation",
+      "position"
+    ]
+  },
+  "schema:worksFor": {
+    "selectors": [
+      "input[autocomplete=\"organization\"]",
+      "input[name=\"company\"]",
+      "input[name=\"employer\"]",
+      "input[name*=\"organization\"]"
+    ],
+    "autocomplete": [
+      "organization"
+    ],
+    "keywords": [
+      "company",
+      "employer",
+      "organization",
+      "organisation"
+    ]
+  },
+  "schema:taxID": {
+    "selectors": [],
+    "autocomplete": [],
+    "keywords": [
+      "tax id",
+      "taxpayer id",
+      "ssn",
+      "social security number"
+    ]
+  }
+}

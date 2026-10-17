@@ -227,7 +227,7 @@ A merge is needed when, at sync time, **both** the local copy and the external c
 
 ---
 
-## Phase 3.7 — Internationalization (i18n)
+## Phase 3.7 — Internationalization (i18n) ✅
 
 Translation support is mandatory for every project (workspace rule). The extension popup,
 approval prompts, desktop app and verifier page are English-only, and the form filler only
@@ -252,17 +252,32 @@ locale-aware field matching. Adding a language afterwards is data-only.
 - **Errors:** modules throw error codes, the UI maps codes to translated messages. No English
   text crosses the core/UI boundary.
 
+### Delivered
+
+- `src/i18n/` — `t()`/`createTranslator()`, locale resolution (saved → browser/OS → `en`), `Intl` date/number
+  helpers, plural keys (`key_one`/`key_other`), catalogs in `src/i18n/locales/<locale>/<namespace>.json`.
+  Adding a language = a new locale directory + one block in `catalogs.ts` (data only).
+- Extension: `_locales/{en,pt_BR}` for manifest name/description/action title (`default_locale: en`);
+  popup and content-script banners use the shared catalog with a language selector (saved in
+  `chrome.storage.local`).
+- Desktop app: `I18nProvider`/`useI18n()`/language selector; audit and grant dates through `Intl`.
+- Form filler: `src/form-filler/locales/{en,pt-BR}.json` (selectors, autocomplete tokens, label keywords);
+  `classifyField()` matches name/id/label/placeholder in any locale; new `schema:taxID` claim for CPF.
+- Errors: background returns codes (`WRONG_PASSPHRASE`, …, `CODE:detail`), UIs render `error.<CODE>`.
+- `npm run i18n:lint` (`scripts/check-i18n.ts`) + CI step fails on hard-coded UI strings.
+- The verifier page has no UI yet; it inherits `src/i18n` when it is built.
+
 ### Acceptance criteria
 
-- [ ] Test: every locale catalog (extension and app) has the same key set as `en`, no empty
+- [x] Test: every locale catalog (extension and app) has the same key set as `en`, no empty
   values; every `__MSG_*__` in the manifest exists.
-- [ ] Test (lint script in CI): no string literal rendered in extension/app UI outside the
+- [x] Test (lint script in CI): no string literal rendered in extension/app UI outside the
   catalog, with an allow-list for non-text values.
-- [ ] Test: the form filler matches pt-BR fixture forms (name, surname, email, phone, CEP, CPF,
+- [x] Test: the form filler matches pt-BR fixture forms (name, surname, email, phone, CEP, CPF,
   address) with the same accuracy as the English fixtures.
-- [ ] Test: switching locale re-renders the popup in pt-BR; unsupported locale falls back to
+- [x] Test: switching locale re-renders the popup in pt-BR; unsupported locale falls back to
   `en`; audit-log dates format per locale.
-- [ ] CI green.
+- [x] CI green.
 
 ---
 

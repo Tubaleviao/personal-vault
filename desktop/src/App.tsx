@@ -7,6 +7,7 @@ import Credentials from './screens/Credentials'
 import Audit from './screens/Audit'
 import Merge from './screens/Merge'
 import Storage from './screens/Storage'
+import { useI18n, LanguageSelect } from './i18n'
 import { writeVaultFile, getActiveVaultName, getLastSyncError } from './tauriVault'
 
 type Screen = 'claims' | 'credentials' | 'audit' | 'storage' | 'merge'
@@ -16,18 +17,19 @@ interface UnlockedState {
   persisted: PersistedVault
 }
 
-const NAV: { id: Screen; label: string }[] = [
-  { id: 'claims', label: 'Claims' },
-  { id: 'credentials', label: 'Credentials' },
-  { id: 'audit',  label: 'Audit log' },
-  { id: 'storage', label: 'Storage' },
-  { id: 'merge',  label: 'Import' },
+const NAV: { id: Screen; labelKey: string }[] = [
+  { id: 'claims', labelKey: 'desktop.nav_claims' },
+  { id: 'credentials', labelKey: 'desktop.nav_credentials' },
+  { id: 'audit',  labelKey: 'desktop.nav_audit' },
+  { id: 'storage', labelKey: 'desktop.nav_storage' },
+  { id: 'merge',  labelKey: 'desktop.nav_import' },
 ]
 
 export default function App() {
+  const { t, describeError } = useI18n()
   const [unlocked, setUnlocked] = useState<UnlockedState | null>(null)
   const [screen, setScreen] = useState<Screen>('claims')
-  const [lockError, setLockError] = useState<string | null>(null)
+  const [lockError, setLockError] = useState<unknown>(null)
   const [syncWarning, setSyncWarning] = useState<string | null>(null)
 
   // Surface mirror failures (drive unplugged, conflict, owner mismatch) outside the Storage screen.
@@ -35,7 +37,7 @@ export default function App() {
     if (!unlocked) { setSyncWarning(null); return }
     const tick = () => {
       const e = getLastSyncError()
-      setSyncWarning(e ? `External storage not in sync (${e.code}). Open the Storage tab.` : null)
+      setSyncWarning(e ? e.code : null)
     }
     tick()
     const t = setInterval(tick, 2000)
@@ -63,7 +65,7 @@ export default function App() {
       await writeVaultFile(persisted)
       setUnlocked(null)
     } catch (err) {
-      setLockError(err instanceof Error ? err.message : String(err))
+      setLockError(err)
     }
   }, [unlocked])
 
@@ -74,29 +76,30 @@ export default function App() {
   return (
     <div style={styles.shell}>
       <aside style={styles.sidebar}>
-        <div style={styles.logo}>Personal Vault</div>
+        <div style={styles.logo}>{t('desktop.app_name')}</div>
         <div style={styles.didShort} title={unlocked.vault.owner.did}>
           {unlocked.vault.owner.did.slice(0, 20)}…
         </div>
         <nav style={styles.nav}>
-          {NAV.map(({ id, label }) => (
+          {NAV.map(({ id, labelKey }) => (
             <button
               key={id}
               style={{ ...styles.navBtn, ...(screen === id ? styles.navBtnActive : {}) }}
               onClick={() => setScreen(id)}
             >
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </nav>
+        <LanguageSelect style={styles.langSelect} />
         <button style={styles.lockBtn} onClick={() => { void handleLock() }}>
-          Lock vault
+          {t('desktop.lock_vault')}
         </button>
-        {lockError && <div style={styles.errorSmall}>{lockError}</div>}
+        {lockError != null && <div style={styles.errorSmall}>{describeError(lockError)}</div>}
       </aside>
 
       <main style={styles.main}>
-        {syncWarning && <div style={styles.syncWarning}>{syncWarning}</div>}
+        {syncWarning && <div style={styles.syncWarning}>{t('desktop.sync_warning', { code: syncWarning })}</div>}
         {screen === 'claims' && (
           <Claims vault={unlocked.vault} onVaultChanged={
             (v, p) => setUnlocked({ vault: v, persisted: p })
@@ -185,6 +188,15 @@ const styles = {
   navBtnActive: {
     background: '#1e293b',
     color: '#f1f5f9',
+  } as React.CSSProperties,
+  langSelect: {
+    background: '#0f172a',
+    border: '1px solid #334155',
+    borderRadius: 6,
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 16,
+    padding: '6px 8px',
   } as React.CSSProperties,
   lockBtn: {
     background: 'transparent',

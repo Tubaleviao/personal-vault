@@ -98,6 +98,11 @@ consent.ts    — Application-layer grant logic: createGrant() (builds + signs),
                 (full "share claims" action combining sharing.ts + vault),
                 revokeGrant() (delegates to Vault).
 
+i18n/         — t()/createTranslator, locale resolution, Intl helpers; catalogs in
+                i18n/locales/<locale>/<ns>.json (en, pt-BR). Core modules return error
+                codes, never English text; UIs render `error.<CODE>`. No hard-coded UI
+                strings: `npm run i18n:lint` enforces it.
+
 src/fabric.ts — Single source of truth for the data model. Edit this, then
                 run `npm run generate`. Never edit src/generated/.
 ```

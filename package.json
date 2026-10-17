@@ -22,6 +22,7 @@
     "generate":             "quoin generate    -c ./newel.config.ts",
     "diff":                 "quoin diff        -c ./newel.config.ts",
     "check-drift":          "quoin check-drift -c ./newel.config.ts",
+    "i18n:lint":            "node -r ./node_modules/tsx/dist/cjs/index.cjs scripts/check-i18n.ts",
     "extension:build":      "node extension/build.mjs",
     "extension:watch":      "node extension/build.mjs --watch",
     "extension:package":    "node -r ./node_modules/tsx/dist/cjs/index.cjs scripts/package-extension.ts",

@@ -21,25 +21,21 @@ export async function mergeVaultsWithSummary(
   }
 }
 
-/** Human-readable note on changes a merge made beyond adding claims (deletions, overwrites, revoked grants). */
-export function describeMergeChanges(s: MergeSummary): string {
-  const parts: string[] = []
-  if (s.deleted > 0) parts.push(`${s.deleted} deleted`)
-  if (s.remoteWins > 0) parts.push(`${s.remoteWins} replaced by newer copy`)
-  if (s.grantsRevoked > 0) parts.push(`${s.grantsRevoked} grant${s.grantsRevoked === 1 ? '' : 's'} revoked`)
-  return parts.join(', ')
-}
-
 /**
  * Merge `other` into `vault`. Same owner: full merge (tombstones, last-writer-wins).
- * Different owners: claims are imported one by one. Returns the added count and a change note.
+ * Different owners: claims are imported one by one. Returns the added count and change counts (UIs localize them).
  */
-export function mergeOrImport(vault: Vault, other: Vault): { added: number; note: string } {
+export interface MergeChanges { deleted: number; remoteWins: number; grantsRevoked: number }
+
+export function mergeOrImport(vault: Vault, other: Vault): { added: number; changes: MergeChanges } {
   if (vault.owner.id === other.owner.id) {
     const summary = vault.mergeFrom(other)
-    return { added: summary.onlyRemote, note: describeMergeChanges(summary) }
+    return {
+      added: summary.onlyRemote,
+      changes: { deleted: summary.deleted, remoteWins: summary.remoteWins, grantsRevoked: summary.grantsRevoked },
+    }
   }
   const before = vault.listClaims().length
   for (const claim of other.listClaims()) vault.importClaim(claim)
-  return { added: Math.max(0, vault.listClaims().length - before), note: '' }
+  return { added: Math.max(0, vault.listClaims().length - before), changes: { deleted: 0, remoteWins: 0, grantsRevoked: 0 } }
 }

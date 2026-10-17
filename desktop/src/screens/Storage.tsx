@@ -4,8 +4,10 @@ import { mergeVaultsWithSummary as mergeCopies } from '@vault/merge'
 import type { Vault, PersistedVault, MergeSummary } from '@vault/vault'
 import {
   getStoragePath, setStoragePath, getSyncBase, readStorageVault, getLastSyncError, compareCopies,
-  readVaultFile, writeLocalVaultFile, adoptStorageCopy, forceMirrorToStorage, StorageError, STORAGE_MESSAGES,
+  readVaultFile, writeLocalVaultFile, adoptStorageCopy, forceMirrorToStorage, StorageError,
 } from '../tauriVault'
+import { useI18n } from '../i18n'
+import { UiError } from '../uiError'
 
 interface Props {
   vault: Vault
@@ -25,11 +27,9 @@ interface MergePreview {
 
 type Status = { ok: boolean; msg: string } | null
 
-function describe(err: unknown): string {
-  return err instanceof StorageError ? err.message : err instanceof Error ? err.message : String(err)
-}
-
 export default function Storage({ vault, onVaultReplaced }: Props) {
+  const { t, formatNumber, describeError: describe } = useI18n()
+  const num = (n: number) => formatNumber(n)
   const [saved, setSaved] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -44,8 +44,9 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
     const p = await getStoragePath().catch((err: unknown) => { cfgError = describe(err); return null })
     setSaved(p)
     setInput(p ?? '')
-    setSyncError(cfgError ?? getLastSyncError()?.message ?? null)
-  }, [])
+    const last = getLastSyncError()
+    setSyncError(cfgError ?? (last ? describe(last) : null))
+  }, [describe])
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -55,7 +56,7 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
     try {
       await setStoragePath(input.trim() || null)
       await refresh()
-      setStatus({ ok: true, msg: input.trim() ? 'Storage location saved.' : 'Storage sync disabled.' })
+      setStatus({ ok: true, msg: input.trim() ? t('desktop.storage_saved') : t('desktop.storage_disabled') })
     } catch (err) {
       setStatus({ ok: false, msg: describe(err) })
     } finally {
@@ -73,12 +74,12 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
       if (local && local.header.ownerId !== remote.header.ownerId) throw new StorageError('OWNER_MISMATCH')
       if (local && newer === 'conflict') { setDivergence({ local, remote }); setPreview(null) } else setDivergence(null)
       const msg = newer === 'same'
-        ? `Storage copy is up to date (sequence ${remote.header.sequenceNumber ?? 0}).`
+        ? t('desktop.storage_up_to_date', { seq: num(remote.header.sequenceNumber ?? 0) })
         : newer === 'conflict'
-          ? 'Storage copy and local copy have diverged (both have changes the other lacks). Neither will be overwritten automatically. Resolve it below.'
+          ? t('desktop.storage_diverged')
         : newer === 'remote'
-          ? `Storage copy is newer (sequence ${remote.header.sequenceNumber ?? 0} vs local ${local?.header.sequenceNumber ?? 0}). It will be used next time you unlock.`
-          : `Local copy is newer (sequence ${local?.header.sequenceNumber ?? 0} vs storage ${remote.header.sequenceNumber ?? 0}). It will be written to storage on the next save.`
+          ? t('desktop.storage_remote_newer', { remote: num(remote.header.sequenceNumber ?? 0), local: num(local?.header.sequenceNumber ?? 0) })
+          : t('desktop.storage_local_newer', { local: num(local?.header.sequenceNumber ?? 0), remote: num(remote.header.sequenceNumber ?? 0) })
       setStatus({ ok: true, msg })
     } catch (err) {
       setStatus({ ok: false, msg: describe(err) })
@@ -93,7 +94,7 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
     setStatus(null)
     try {
       const local = await readVaultFile()
-      if (!local) throw new Error('No local vault file.')
+      if (!local) throw new UiError('desktop.storage_err_no_local')
       // Overwriting is destructive: confirm unless storage is empty, older, or already identical.
       // Only a missing file may be overwritten without asking; an unreadable or
       // foreign file needs explicit confirmation.
@@ -102,9 +103,8 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
         remote = await readStorageVault()
       } catch (err) {
         if (!(err instanceof StorageError && err.code === 'NOT_FOUND')) {
-          const detail = err instanceof StorageError ? err.message : describe(err)
-          if (!window.confirm(`The file at the storage path could not be verified as a vault (${detail}). Overwrite it with the local copy? This cannot be undone.`)) {
-            setStatus({ ok: false, msg: 'Cancelled; storage file left untouched.' })
+          if (!window.confirm(t('desktop.storage_confirm_unverified', { detail: describe(err) }))) {
+            setStatus({ ok: false, msg: t('desktop.storage_cancelled_file') })
             return
           }
         }
@@ -113,10 +113,10 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
         const sameOwner = remote.header.ownerId === local.header.ownerId
         if (!sameOwner || compareCopies(local, remote, getSyncBase()) !== 'local') {
           const why = !sameOwner
-            ? 'The storage file belongs to a DIFFERENT vault.'
-            : 'The storage copy is newer than or has diverged from the local copy.'
-          if (!window.confirm(`${why} Overwrite it with the local copy? This cannot be undone.`)) {
-            setStatus({ ok: false, msg: 'Cancelled; storage copy left untouched.' })
+            ? t('desktop.storage_why_different')
+            : t('desktop.storage_why_newer')
+          if (!window.confirm(t('desktop.storage_confirm_overwrite', { why }))) {
+            setStatus({ ok: false, msg: t('desktop.storage_cancelled_copy') })
             return
           }
         }
@@ -124,7 +124,7 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
       await forceMirrorToStorage(local)
       await refresh()
       const err = getLastSyncError()
-      setStatus(err ? { ok: false, msg: err.message } : { ok: true, msg: 'Storage updated from local copy.' })
+      setStatus(err ? { ok: false, msg: describe(err) } : { ok: true, msg: t('desktop.storage_updated') })
     } catch (err) {
       setStatus({ ok: false, msg: describe(err) })
     } finally {
@@ -186,7 +186,7 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
     const fresh = await readStorageVault(saved)
     if (JSON.stringify(fresh) !== JSON.stringify(divergence.remote)) {
       clearDivergence()
-      throw new Error('The storage copy changed since it was read. Run "Test read" again before resolving.')
+      throw new UiError('desktop.storage_err_changed')
     }
   }
 
@@ -199,7 +199,7 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
       // Re-merge from a fresh seal: edits made since the preview must not be lost.
       const sealedLocal = await vault.seal()
       const { vault: merged } = await mergeCopies(sealedLocal, divergence.remote, passphrase)
-      await applyResolution(merged, 'Merged and saved to both the local copy and storage.', true)
+      await applyResolution(merged, t('desktop.storage_merged_saved'), true)
     } catch (err) {
       setStatus({ ok: false, msg: describe(err) })
     } finally {
@@ -209,14 +209,13 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
 
   const handleKeep = async (which: 'local' | 'external') => {
     if (!divergence || !passphrase) return
-    const lost = which === 'local' ? 'the storage copy' : 'the local copy'
-    if (!window.confirm(`Keep ${which} and discard ${lost}? Changes only in ${lost} will be lost. This cannot be undone.`)) return
+    if (!window.confirm(t(which === 'local' ? 'desktop.storage_confirm_keep_local' : 'desktop.storage_confirm_keep_external'))) return
     setBusy(true)
     setStatus(null)
     try {
       if (which === 'local') await assertStorageUnchanged()
       const persisted = which === 'local' ? await vault.seal() : divergence.remote
-      await applyResolution(persisted, which === 'local' ? 'Kept local copy; storage updated.' : 'Kept storage copy; local copy replaced.', which === 'local')
+      await applyResolution(persisted, which === 'local' ? t('desktop.storage_kept_local') : t('desktop.storage_kept_external'), which === 'local')
     } catch (err) {
       setStatus({ ok: false, msg: describe(err) })
     } finally {
@@ -226,55 +225,57 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
 
   return (
     <div>
-      <h2 style={styles.heading}>Storage</h2>
+      <h2 style={styles.heading}>{t('desktop.nav_storage')}</h2>
       <p style={styles.hint}>
-        Keep an encrypted copy of this vault in a folder synced by iCloud Drive, Dropbox, Google Drive,
-        or on a flash drive. The file is always encrypted; the provider never sees your data.
-        Enter the full path to the vault file, e.g. <code>/home/you/Dropbox/vault.json</code>.
+        {t('desktop.storage_hint', { example: '/home/you/Dropbox/vault.json' })}
       </p>
 
-      <label style={styles.label}>Vault file path</label>
+      <label style={styles.label}>{t('desktop.storage_path_label')}</label>
       <input
         style={styles.input}
         value={input}
-        placeholder={STORAGE_MESSAGES.NOT_CONFIGURED}
+        placeholder={t('desktop.storage_err_NOT_CONFIGURED')}
         onChange={e => setInput(e.target.value)}
         spellCheck={false}
       />
       <div style={styles.row}>
-        <button style={styles.btn} disabled={busy} onClick={() => { void handleSave() }}>Save</button>
-        <button style={styles.btn} disabled={busy || !saved || input.trim() !== saved} title="Save the path first" onClick={() => { void handleTestRead() }}>
-          Test read
+        <button style={styles.btn} disabled={busy} onClick={() => { void handleSave() }}>{t('desktop.save')}</button>
+        <button style={styles.btn} disabled={busy || !saved || input.trim() !== saved} title={t('desktop.storage_save_first')} onClick={() => { void handleTestRead() }}>
+          {t('desktop.storage_test_read')}
         </button>
         <button style={styles.btn} disabled={busy || !saved} onClick={() => { void handleUseLocal() }}>
-          Use local copy
+          {t('desktop.storage_use_local')}
         </button>
       </div>
 
       {divergence && (
         <div style={styles.banner}>
-          <strong>Both copies were modified since your last sync.</strong>
+          <strong>{t('desktop.storage_both_modified')}</strong>
           <div style={{ marginTop: 6 }}>
-            Local is at sequence {divergence.local.header.sequenceNumber ?? 0}, storage at {divergence.remote.header.sequenceNumber ?? 0}.
+            {t('desktop.storage_sequences', { local: num(divergence.local.header.sequenceNumber ?? 0), remote: num(divergence.remote.header.sequenceNumber ?? 0) })}
+            {' '}
             {preview
-              ? ` ${preview.summary.onlyRemote + preview.summary.remoteWins + preview.summary.localWins + preview.summary.onlyLocal + preview.summary.identical} claims will be merged.`
-              : ' Enter your passphrase to preview the merge.'}
+              ? t('desktop.storage_will_merge', {
+                count: preview.summary.onlyRemote + preview.summary.remoteWins + preview.summary.localWins + preview.summary.onlyLocal + preview.summary.identical,
+                n: num(preview.summary.onlyRemote + preview.summary.remoteWins + preview.summary.localWins + preview.summary.onlyLocal + preview.summary.identical),
+              })
+              : t('desktop.storage_enter_passphrase')}
           </div>
           {preview && (
             <ul style={styles.list}>
-              <li>{preview.summary.identical} identical</li>
-              <li>{preview.summary.localWins} differ — local version wins</li>
-              <li>{preview.summary.remoteWins} differ — storage version wins</li>
-              <li>{preview.summary.onlyLocal} only on this device</li>
-              <li>{preview.summary.onlyRemote} only in storage (will be added)</li>
-              <li>{preview.summary.deleted} removed (deleted on one side)</li>
-              <li>{preview.summary.grantsRevoked} grants revoked, {preview.summary.grantsAdded} grants added</li>
+              <li>{t('desktop.storage_sum_identical', { n: num(preview.summary.identical) })}</li>
+              <li>{t('desktop.storage_sum_local_wins', { n: num(preview.summary.localWins) })}</li>
+              <li>{t('desktop.storage_sum_remote_wins', { n: num(preview.summary.remoteWins) })}</li>
+              <li>{t('desktop.storage_sum_only_local', { n: num(preview.summary.onlyLocal) })}</li>
+              <li>{t('desktop.storage_sum_only_remote', { n: num(preview.summary.onlyRemote) })}</li>
+              <li>{t('desktop.storage_sum_deleted', { n: num(preview.summary.deleted) })}</li>
+              <li>{t('desktop.storage_sum_grants', { revoked: num(preview.summary.grantsRevoked), added: num(preview.summary.grantsAdded) })}</li>
             </ul>
           )}
           <input
             style={{ ...styles.input, marginTop: 10 }}
             type="password"
-            placeholder="Vault passphrase"
+            placeholder={t('desktop.storage_passphrase')}
             value={passphrase}
             autoComplete="off"
             disabled={busy}
@@ -282,20 +283,20 @@ export default function Storage({ vault, onVaultReplaced }: Props) {
           />
           <div style={styles.row}>
             {preview
-              ? <button style={styles.btn} disabled={busy} onClick={() => { void handleMergeAndSave() }}>Merge and save</button>
-              : <button style={styles.btn} disabled={busy || !passphrase} onClick={() => { void handlePreviewMerge() }}>Preview merge</button>}
-            <button style={styles.btn} disabled={busy || !passphrase} onClick={() => { void handleKeep('local') }}>Keep local</button>
-            <button style={styles.btn} disabled={busy || !passphrase} onClick={() => { void handleKeep('external') }}>Keep external</button>
-            <button style={styles.btn} disabled={busy} onClick={clearDivergence}>Dismiss</button>
+              ? <button style={styles.btn} disabled={busy} onClick={() => { void handleMergeAndSave() }}>{t('desktop.storage_merge_save')}</button>
+              : <button style={styles.btn} disabled={busy || !passphrase} onClick={() => { void handlePreviewMerge() }}>{t('desktop.storage_preview_merge')}</button>}
+            <button style={styles.btn} disabled={busy || !passphrase} onClick={() => { void handleKeep('local') }}>{t('desktop.storage_keep_local')}</button>
+            <button style={styles.btn} disabled={busy || !passphrase} onClick={() => { void handleKeep('external') }}>{t('desktop.storage_keep_external')}</button>
+            <button style={styles.btn} disabled={busy} onClick={clearDivergence}>{t('desktop.dismiss')}</button>
           </div>
         </div>
       )}
       {status && (
         <div style={status.ok ? styles.ok : styles.err}>{status.msg}</div>
       )}
-      {syncError && <div style={styles.err}>Last sync failed: {syncError}</div>}
+      {syncError && <div style={styles.err}>{t('desktop.storage_sync_failed', { detail: syncError })}</div>}
       <div style={styles.meta}>
-        Vault {vault.owner.did.slice(0, 20)}… · {saved ? `syncing to ${saved}` : 'sync disabled'}
+        {t('desktop.storage_meta', { did: vault.owner.did.slice(0, 20) })}{' · '}{saved ? t('desktop.storage_syncing_to', { path: saved }) : t('desktop.storage_sync_disabled')}
       </div>
     </div>
   )

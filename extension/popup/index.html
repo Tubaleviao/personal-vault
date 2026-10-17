@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Personal Vault</title>
+  <title data-i18n="popup.appName">Personal Vault</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0 }
     body {
@@ -97,60 +97,61 @@
 <body>
   <header>
     <div id="status-dot"></div>
-    <h1>Personal Vault</h1>
+    <h1 data-i18n="popup.appName">Personal Vault</h1>
+    <select id="lang-select" aria-label="Language" data-i18n-aria-label="popup.language" style="background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:4px;font-size:10px;padding:1px 2px"></select>
     <span id="did-short" style="color:#475569;font-size:11px"></span>
-    <span id="native-badge" title="Desktop app connection status">desktop</span>
+    <span id="native-badge" title="Desktop app connection status" data-i18n-title="popup.nativeStatusTitle" data-i18n="popup.desktopBadge">desktop</span>
   </header>
 
   <!-- Unlock / Create form (shown when vault is locked) -->
   <section id="locked-view">
     <!-- Vault picker (shown when vaults are found) -->
     <div id="vault-picker-view">
-      <h2>Your vaults</h2>
-      <p id="vault-picker-subtitle" style="color:#64748b;font-size:11px;margin-bottom:8px">Select a vault to unlock.</p>
+      <h2 data-i18n="popup.pickerTitle">Your vaults</h2>
+      <p id="vault-picker-subtitle" style="color:#64748b;font-size:11px;margin-bottom:8px" data-i18n="popup.pickerSubtitle">Select a vault to unlock.</p>
       <div id="vault-picker-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
-      <button id="picker-create-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:block">Create a new vault instead</button>
+      <button id="picker-create-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:block" data-i18n="popup.pickerCreate">Create a new vault instead</button>
     </div>
 
     <!-- Unlock form -->
     <div id="unlock-view">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-        <h2 style="margin-bottom:0">Unlock Vault</h2>
+        <h2 style="margin-bottom:0" data-i18n="popup.unlockTitle">Unlock Vault</h2>
         <span id="vault-source-badge" style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:4px;background:#1e293b;color:#7dd3fc;white-space:nowrap"></span>
       </div>
       <form id="unlock-form" autocomplete="off">
-        <input type="password" id="passphrase" placeholder="Passphrase" autofocus>
-        <input type="password" id="mnemonic-input" placeholder="Recovery phrase (optional — needed for sync)">
+        <input type="password" id="passphrase" placeholder="Passphrase" data-i18n-placeholder="popup.passphrasePlaceholder" autofocus>
+        <input type="password" id="mnemonic-input" placeholder="Recovery phrase (optional — needed for sync)" data-i18n-placeholder="popup.mnemonicPlaceholder">
         <div id="error-msg"></div>
-        <button type="submit" class="btn-primary">Unlock</button>
+        <button type="submit" class="btn-primary" data-i18n="popup.unlockButton">Unlock</button>
       </form>
       <div style="display:flex;gap:10px;margin-top:6px">
-        <button id="back-to-picker" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:none">← Back</button>
-        <button id="toggle-create" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline">No vault yet? Create one</button>
+        <button id="back-to-picker" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;display:none" data-i18n="popup.back">← Back</button>
+        <button id="toggle-create" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline" data-i18n="popup.toggleCreate">No vault yet? Create one</button>
       </div>
     </div>
 
     <!-- Create vault form -->
     <div id="create-view">
-      <h2>Create New Vault</h2>
+      <h2 data-i18n="popup.createTitle">Create New Vault</h2>
       <form id="create-form" autocomplete="off">
-        <input type="password" id="create-passphrase" placeholder="Choose a passphrase">
-        <input type="password" id="create-passphrase-confirm" placeholder="Confirm passphrase">
+        <input type="password" id="create-passphrase" placeholder="Choose a passphrase" data-i18n-placeholder="popup.createPassphrasePlaceholder">
+        <input type="password" id="create-passphrase-confirm" placeholder="Confirm passphrase" data-i18n-placeholder="popup.confirmPassphrasePlaceholder">
         <div id="create-error-msg" style="color:#f87171;font-size:12px;display:none"></div>
-        <button type="submit" class="btn-primary">Create vault</button>
+        <button type="submit" class="btn-primary" data-i18n="popup.createButton">Create vault</button>
       </form>
       <div id="file-import-locked" style="margin-top:10px"></div>
-      <button id="toggle-unlock" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;margin-top:4px;display:block">Already have a vault? Unlock it</button>
+      <button id="toggle-unlock" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;margin-top:4px;display:block" data-i18n="popup.toggleUnlock">Already have a vault? Unlock it</button>
     </div>
 
     <!-- Mnemonic reveal (shown once after vault creation) -->
     <div id="mnemonic-view" style="display:none">
-      <h2>Recovery Phrase</h2>
-      <p style="color:#94a3b8;font-size:12px;margin-bottom:4px">Write these 12 words down and keep them safe. They cannot be shown again.</p>
+      <h2 data-i18n="popup.mnemonicTitle">Recovery Phrase</h2>
+      <p style="color:#94a3b8;font-size:12px;margin-bottom:4px" data-i18n="popup.mnemonicIntro">Write these 12 words down and keep them safe. They cannot be shown again.</p>
       <div id="mnemonic-display"></div>
-      <p id="mnemonic-warning">Store this phrase offline before continuing.</p>
-      <button id="copy-mnemonic-btn" class="btn-primary">Copy to clipboard</button>
-      <button id="mnemonic-done-btn" class="btn-primary" style="margin-top:6px;width:100%">I've saved it — continue</button>
+      <p id="mnemonic-warning" data-i18n="popup.mnemonicWarning">Store this phrase offline before continuing.</p>
+      <button id="copy-mnemonic-btn" class="btn-primary" data-i18n="popup.copy">Copy to clipboard</button>
+      <button id="mnemonic-done-btn" class="btn-primary" style="margin-top:6px;width:100%" data-i18n="popup.mnemonicDone">I've saved it — continue</button>
     </div>
   </section>
 
@@ -159,31 +160,31 @@
     <!-- Main screen -->
     <div id="main-panel">
       <div id="approvals-section" style="display:none">
-        <h2>Approved Sites</h2>
+        <h2 data-i18n="popup.approvedSites">Approved Sites</h2>
         <ul id="approval-list" class="approval-list"></ul>
       </div>
       <div id="credentials-section" style="display:none;margin-top:12px">
-        <h2>Saved Credentials</h2>
+        <h2 data-i18n="popup.savedCredentials">Saved Credentials</h2>
         <ul id="credential-list" class="approval-list"></ul>
       </div>
-      <div id="no-approvals">No data</div>
+      <div id="no-approvals" data-i18n="popup.noData">No data</div>
 
       <div id="export-section" style="display:none;margin-top:14px">
-        <button id="export-btn" style="width:100%;background:transparent;border:1px solid #3b82f6;border-radius:6px;color:#7dd3fc;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer">Save vault to desktop</button>
+        <button id="export-btn" style="width:100%;background:transparent;border:1px solid #3b82f6;border-radius:6px;color:#7dd3fc;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer" data-i18n="popup.exportButton">Save vault to desktop</button>
         <div id="export-status" style="font-size:11px;min-height:14px;margin-top:4px"></div>
       </div>
-      <button id="import-btn" style="margin-top:8px;width:100%;background:transparent;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer">Import from another vault</button>
+      <button id="import-btn" style="margin-top:8px;width:100%;background:transparent;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer" data-i18n="popup.importButton">Import from another vault</button>
       <div id="file-import-unlocked" style="margin-top:8px"></div>
-      <button id="lock-btn" class="btn-danger" style="margin-top:8px;width:100%">Lock vault</button>
+      <button id="lock-btn" class="btn-danger" style="margin-top:8px;width:100%" data-i18n="popup.lockButton">Lock vault</button>
     </div>
 
     <!-- Merge screen (replaces main panel) -->
     <div id="merge-panel" style="display:none">
-      <button id="merge-back-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;margin-bottom:10px;display:block">← Back</button>
-      <h2>Import from another vault</h2>
-      <p style="color:#64748b;font-size:11px;margin:4px 0 10px">Enter the passphrase of the vault to import. It will be deleted after a successful merge.</p>
+      <button id="merge-back-btn" style="background:none;border:none;color:#475569;font-size:11px;cursor:pointer;padding:0;text-decoration:underline;margin-bottom:10px;display:block" data-i18n="popup.back">← Back</button>
+      <h2 data-i18n="popup.importButton">Import from another vault</h2>
+      <p style="color:#64748b;font-size:11px;margin:4px 0 10px" data-i18n="popup.mergeIntro">Enter the passphrase of the vault to import. It will be deleted after a successful merge.</p>
       <div id="merge-vault-list" style="display:flex;flex-direction:column;gap:8px"></div>
-      <div id="merge-empty" style="display:none;color:#64748b;font-size:12px;text-align:center;padding:16px 0">No other vaults found.</div>
+      <div id="merge-empty" style="display:none;color:#64748b;font-size:12px;text-align:center;padding:16px 0" data-i18n="popup.mergeEmpty">No other vaults found.</div>
     </div>
   </section>
 

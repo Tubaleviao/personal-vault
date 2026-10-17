@@ -11,6 +11,25 @@
 import type { PopupToBackground, BackgroundToPopup, VaultListEntry } from '../messages'
 import type { SiteApproval, CredentialEntry } from '../../src/form-filler'
 import { isSiteApprovalValid } from '../../src/form-filler'
+import { errorMessage, SUPPORTED_LOCALES, type Translator, createTranslator, type Params } from '../../src/i18n'
+import { loadTranslator, saveLocale, applyI18n, claimLabel } from '../i18n'
+
+/** Active translator; swapped by setLocale() and used by every render function. */
+let tr: Translator = createTranslator()
+const t = (key: string, params?: Params) => tr.t(`popup.${key}`, params)
+const err = (code: string | undefined | null) => errorMessage(tr, code)
+
+/** Claim/merge summary: "3 new claims" + optional change counts, rendered per locale. */
+function changeSuffix(changes?: { deleted: number; remoteWins: number; grantsRevoked: number }): string {
+  const parts: string[] = []
+  if (changes?.deleted) parts.push(t('changeDeleted', { count: changes.deleted }))
+  if (changes?.remoteWins) parts.push(t('changeReplaced', { count: changes.remoteWins }))
+  if (changes?.grantsRevoked) parts.push(t('changeGrantsRevoked', { count: changes.grantsRevoked }))
+  return parts.length ? ` (${parts.join(', ')})` : ''
+}
+function mergeSummary(added: number, changes?: { deleted: number; remoteWins: number; grantsRevoked: number }): string {
+  return (added > 0 ? t('mergedClaims', { count: added }) : t('noNewClaims')) + changeSuffix(changes)
+}
 
 async function send<T extends BackgroundToPopup>(msg: PopupToBackground): Promise<T | null> {
   try {
@@ -132,14 +151,15 @@ function renderApprovals(approvals: SiteApproval[]) {
 
     const types = document.createElement('div')
     types.className = 'approval-types'
-    types.textContent = approval.claimTypes.map(t => t.replace('schema:', '')).join(', ')
+    types.textContent = approval.claimTypes.map(ct => claimLabel(tr, ct)).join(', ')
+    if (approval.expiresAt) types.textContent += ` · ${t('expires', { date: tr.formatDate(approval.expiresAt) })}`
 
     info.appendChild(origin)
     info.appendChild(types)
 
     const revokeBtn = document.createElement('button')
     revokeBtn.className = 'revoke-btn'
-    revokeBtn.title = 'Revoke access'
+    revokeBtn.title = t('revokeAccess')
     revokeBtn.textContent = '✕'
     revokeBtn.onclick = () => revokeApproval(approval.id)
 
@@ -211,7 +231,7 @@ function showMergePanel() {
   for (const v of _mergeableVaults) {
     const friendlyName = v.name
       ? v.name.replace(/\.json$/, '').replace(/-/g, ' ')
-      : (v.source === 'local' ? 'Browser vault' : 'Desktop vault')
+      : t(v.source === 'local' ? 'browserVault' : 'desktopVault')
 
     const card = document.createElement('div')
     card.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:6px'
@@ -225,7 +245,7 @@ function showMergePanel() {
 
     const badgeEl = document.createElement('span')
     badgeEl.style.cssText = 'font-size:10px;color:#64748b'
-    badgeEl.textContent = v.source === 'native' ? 'desktop' : 'browser'
+    badgeEl.textContent = t(v.source === 'native' ? 'sourceDesktop' : 'sourceBrowser')
 
     labelRow.appendChild(nameEl)
     labelRow.appendChild(badgeEl)
@@ -236,14 +256,14 @@ function showMergePanel() {
 
     const input = document.createElement('input')
     input.type = 'password'
-    input.placeholder = 'Passphrase'
+    input.placeholder = t('passphrasePlaceholder')
     input.style.cssText = 'flex:1;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#f1f5f9;font-size:12px;padding:6px 8px;outline:none;min-width:0'
 
     const btn = document.createElement('button')
     btn.type = 'submit'
     btn.className = 'btn-primary'
     btn.style.cssText = 'flex-shrink:0;font-size:11px;padding:6px 10px'
-    btn.textContent = 'Merge'
+    btn.textContent = t('merge')
 
     const status = document.createElement('div')
     status.style.cssText = 'font-size:11px;min-height:14px'
@@ -260,27 +280,27 @@ function showMergePanel() {
       const passphrase = input.value
       if (!passphrase) return
       btn.setAttribute('disabled', 'true')
-      btn.textContent = 'Merging…'
+      btn.textContent = t('merging')
       status.textContent = ''
 
       const mergeRes = await send<BackgroundToPopup>({
         type: 'MERGE_VAULT', source: v.source, name: v.name, passphrase,
-      }) as { type: 'MERGE_RESULT'; ok: boolean; added: number; note?: string; error?: string } | null
+      }) as { type: 'MERGE_RESULT'; ok: boolean; added: number; changes?: { deleted: number; remoteWins: number; grantsRevoked: number }; error?: string } | null
 
       input.value = ''
       btn.removeAttribute('disabled')
-      btn.textContent = 'Merge'
+      btn.textContent = t('merge')
 
       if (!mergeRes?.ok) {
         status.style.color = '#f87171'
-        status.textContent = mergeRes?.error ?? 'Wrong passphrase or error'
+        status.textContent = mergeRes?.error ? err(mergeRes.error) : t('wrongPassphraseOrError')
         return
       }
 
       // Merge succeeded — delete the source vault
       btn.setAttribute('disabled', 'true')
       status.style.color = '#64748b'
-      status.textContent = 'Deleting source vault…'
+      status.textContent = t('deletingSource')
 
       const delRes = await send<BackgroundToPopup>({
         type: 'DELETE_VAULT', source: v.source, name: v.name,
@@ -290,14 +310,12 @@ function showMergePanel() {
 
       if (!delRes?.ok) {
         status.style.color = '#fbbf24'
-        const addedText = (mergeRes.added > 0 ? `Merged ${mergeRes.added} claim${mergeRes.added === 1 ? '' : 's'}` : 'No new claims') + (mergeRes.note ? ` (${mergeRes.note})` : '')
-        status.textContent = `${addedText} — could not delete source: ${delRes?.error ?? 'unknown error'}`
+        status.textContent = t('deleteSourceFailed', { summary: mergeSummary(mergeRes.added, mergeRes.changes), error: delRes?.error ? err(delRes.error) : t('unknownError') })
         return
       }
 
-      const addedText = (mergeRes.added > 0 ? `Merged ${mergeRes.added} claim${mergeRes.added === 1 ? '' : 's'}` : 'No new claims') + (mergeRes.note ? ` (${mergeRes.note})` : '')
       status.style.color = '#22c55e'
-      status.textContent = `${addedText} — source vault deleted`
+      status.textContent = t('sourceDeleted', { summary: mergeSummary(mergeRes.added, mergeRes.changes) })
       _mergeableVaults = _mergeableVaults.filter(x => !(x.source === v.source && x.name === v.name))
       setTimeout(() => card.remove(), 2500)
     })
@@ -386,7 +404,7 @@ function showUnlockPanel(source?: 'native' | 'local') {
   createPanel.style.display = 'none'
   mnemonicPanel.style.display = 'none'
   if (source) {
-    vaultSourceBadge.textContent = source === 'native' ? 'Desktop' : 'Browser'
+    vaultSourceBadge.textContent = t(source === 'native' ? 'badgeDesktop' : 'badgeBrowser')
     vaultSourceBadge.style.display = 'inline'
   } else {
     vaultSourceBadge.textContent = ''
@@ -418,9 +436,7 @@ function showMnemonicPanel(mnemonic: string, ownerDid?: string, activeSource?: '
 
 function showVaultPickerPanel(vaults: VaultListEntry[]) {
   vaultPickerList.innerHTML = ''
-  vaultPickerSubtitle.textContent = vaults.length === 1
-    ? 'One vault found. Click it to unlock.'
-    : `${vaults.length} vaults found. Select one to unlock.`
+  vaultPickerSubtitle.textContent = t('pickerFound', { count: vaults.length })
 
   for (const v of vaults) {
     const item = document.createElement('button')
@@ -437,13 +453,13 @@ function showVaultPickerPanel(vaults: VaultListEntry[]) {
     label.className = 'vault-picker-label'
     const friendlyName = v.name
       ? v.name.replace(/\.json$/, '').replace(/-/g, ' ')
-      : 'Browser vault'
-    label.textContent = v.source === 'native' ? friendlyName : 'Browser vault (extension storage)'
+      : t('browserVault')
+    label.textContent = v.source === 'native' ? friendlyName : t('browserVaultStorage')
 
     const meta = document.createElement('div')
     meta.className = 'vault-picker-meta'
     const seq = v.header.sequenceNumber ?? 0
-    meta.textContent = `Rev ${seq} · ${v.source === 'native' ? 'desktop' : 'browser'} · ${v.header.ownerId.slice(0, 8)}`
+    meta.textContent = `${t('revision', { seq })} · ${t(v.source === 'native' ? 'sourceDesktop' : 'sourceBrowser')} · ${v.header.ownerId.slice(0, 8)}`
 
     item.appendChild(label)
     item.appendChild(meta)
@@ -472,7 +488,7 @@ unlockForm.addEventListener('submit', async e => {
 
   const res = await send<BackgroundToPopup>({ type: 'UNLOCK_VAULT', passphrase, mnemonic }) as { type: 'UNLOCK_RESULT'; ok: boolean; error?: string; ownerDid?: string; activeSource?: 'native' | 'local' } | null
   if (!res?.ok) {
-    errorMsg.textContent = res?.error ?? 'Failed to unlock vault'
+    errorMsg.textContent = res?.error ? err(res.error) : t('unlockFailed')
     errorMsg.style.display = 'block'
     passphraseInput.value = ''
     return
@@ -499,14 +515,14 @@ createForm.addEventListener('submit', async e => {
   const confirm = createPassphraseConfirm.value
   if (!passphrase) return
   if (passphrase !== confirm) {
-    createErrorMsg.textContent = 'Passphrases do not match'
+    createErrorMsg.textContent = t('passphraseMismatch')
     createErrorMsg.style.display = 'block'
     return
   }
 
   const res = await send<BackgroundToPopup>({ type: 'CREATE_VAULT', passphrase }) as { type: 'CREATE_RESULT'; ok: boolean; mnemonic?: string; error?: string; ownerDid?: string; activeSource?: 'native' | 'local' } | null
   if (!res?.ok) {
-    createErrorMsg.textContent = res?.error ?? 'Failed to create vault'
+    createErrorMsg.textContent = res?.error ? err(res.error) : t('createFailed')
     createErrorMsg.style.display = 'block'
     return
   }
@@ -514,7 +530,7 @@ createForm.addEventListener('submit', async e => {
   createPassphrase.value = ''
   createPassphraseConfirm.value = ''
   if (!res.mnemonic) {
-    createErrorMsg.textContent = 'Vault created but recovery phrase unavailable'
+    createErrorMsg.textContent = t('mnemonicUnavailable')
     createErrorMsg.style.display = 'block'
     return
   }
@@ -523,8 +539,8 @@ createForm.addEventListener('submit', async e => {
 
 copyMnemonicBtn.addEventListener('click', () => {
   navigator.clipboard.writeText(mnemonicDisplay.textContent ?? '').catch(() => { /* non-critical */ })
-  copyMnemonicBtn.textContent = 'Copied!'
-  setTimeout(() => { copyMnemonicBtn.textContent = 'Copy to clipboard' }, 2000)
+  copyMnemonicBtn.textContent = t('copied')
+  setTimeout(() => { copyMnemonicBtn.textContent = t('copy') }, 2000)
 })
 
 mnemonicDoneBtn.addEventListener('click', () => {
@@ -539,7 +555,7 @@ pickerCreateBtn.addEventListener('click', showCreatePanel)
 exportBtn.addEventListener('click', async () => {
   exportBtn.setAttribute('disabled', 'true')
   exportStatus.style.color = '#64748b'
-  exportStatus.textContent = 'Exporting…'
+  exportStatus.textContent = t('exporting')
 
   const res = await send<BackgroundToPopup>({ type: 'EXPORT_TO_DESKTOP' }) as { type: 'EXPORT_RESULT'; ok: boolean; name?: string; error?: string } | null
 
@@ -547,15 +563,15 @@ exportBtn.addEventListener('click', async () => {
 
   if (!res?.ok) {
     exportStatus.style.color = '#f87171'
-    exportStatus.textContent = res?.error ?? 'Export failed'
+    exportStatus.textContent = res?.error ? err(res.error) : t('exportFailed')
     return
   }
 
   exportStatus.style.color = '#22c55e'
   if (res.name) {
-    exportStatus.textContent = `Saved as "${res.name}" — use Import in the desktop app to merge it`
+    exportStatus.textContent = t('exportSavedAs', { name: res.name })
   } else {
-    exportStatus.textContent = 'Vault saved to desktop — now the primary storage'
+    exportStatus.textContent = t('exportSaved')
     exportSection.style.display = 'none'
   }
 })
@@ -575,7 +591,7 @@ mergeBackBtn.addEventListener('click', () => {
 function mountFileImport(container: HTMLElement, unlocked: boolean) {
   const toggle = document.createElement('button')
   toggle.type = 'button'
-  toggle.textContent = unlocked ? 'Import vault file…' : 'Restore from a vault file…'
+  toggle.textContent = t(unlocked ? 'importFile' : 'restoreFile')
   toggle.style.cssText = 'width:100%;background:transparent;border:1px solid #334155;border-radius:6px;color:#94a3b8;font-size:12px;font-weight:500;padding:7px 12px;cursor:pointer'
 
   const form = document.createElement('div')
@@ -585,11 +601,11 @@ function mountFileImport(container: HTMLElement, unlocked: boolean) {
   file.accept = '.json,.vault,application/json'
   const pass = document.createElement('input')
   pass.type = 'password'
-  pass.placeholder = 'Passphrase of that vault'
+  pass.placeholder = t('filePassphrasePlaceholder')
   const go = document.createElement('button')
   go.type = 'button'
   go.className = 'btn-primary'
-  go.textContent = unlocked ? 'Merge into this vault' : 'Restore vault'
+  go.textContent = t(unlocked ? 'mergeIntoVault' : 'restoreVault')
   const status = document.createElement('div')
   status.style.cssText = 'font-size:11px;min-height:14px'
   form.append(file, pass, go, status)
@@ -599,33 +615,33 @@ function mountFileImport(container: HTMLElement, unlocked: boolean) {
     const f = file.files?.[0]
     if (!f || !pass.value) {
       status.style.color = '#f87171'
-      status.textContent = 'Choose a file and enter its passphrase'
+      status.textContent = t('chooseFile')
       return
     }
     go.setAttribute('disabled', 'true')
     status.style.color = '#64748b'
-    status.textContent = 'Importing…'
+    status.textContent = t('importing')
     try {
       const text = await f.text()
       const res = await send<BackgroundToPopup>({ type: 'IMPORT_VAULT_FILE', text, passphrase: pass.value }) as
-        { type: 'MERGE_RESULT'; ok: boolean; added: number; note?: string; error?: string }
+        { type: 'MERGE_RESULT'; ok: boolean; added: number; changes?: { deleted: number; remoteWins: number; grantsRevoked: number }; error?: string }
         | { type: 'IMPORT_FILE_RESULT'; ok: boolean; error?: string } | null
       pass.value = ''
       if (!res?.ok) {
         status.style.color = '#f87171'
-        status.textContent = res?.error ?? 'Import failed'
+        status.textContent = res?.error ? err(res.error) : t('importFailed')
         return
       }
       status.style.color = '#22c55e'
       if (res.type === 'MERGE_RESULT') {
-        status.textContent = `Imported ${res.added} new claim${res.added === 1 ? '' : 's'}${res.note ? ` (${res.note})` : ''}`
+        status.textContent = `${t('imported', { count: res.added })}${changeSuffix(res.changes)}`
       } else {
         await init()
       }
-    } catch (err) {
+    } catch (e) {
       pass.value = ''
       status.style.color = '#f87171'
-      status.textContent = `Import failed: ${err instanceof Error ? err.message : String(err)}`
+      status.textContent = t('importFailedDetail', { detail: e instanceof Error ? e.message : String(e) })
     } finally {
       go.removeAttribute('disabled')
     }
@@ -633,22 +649,63 @@ function mountFileImport(container: HTMLElement, unlocked: boolean) {
   container.append(toggle, form)
 }
 
-mountFileImport(document.getElementById('file-import-locked')!, false)
-mountFileImport(document.getElementById('file-import-unlocked')!, true)
-
 // Show whether the desktop native host is reachable
 async function updateNativeBadge() {
   const res = await send<BackgroundToPopup>({ type: 'GET_NATIVE_HOST_STATUS' }) as { type: 'NATIVE_HOST_STATUS'; available: boolean } | null
   if (res?.available) {
-    nativeBadge.textContent = 'desktop connected'
+    nativeBadge.textContent = t('nativeConnected')
     nativeBadge.classList.add('connected')
-    nativeBadge.title = 'Vault I/O routed through the desktop app'
+    nativeBadge.title = t('nativeConnectedTitle')
   } else {
-    nativeBadge.textContent = 'desktop offline'
+    nativeBadge.textContent = t('nativeOffline')
     nativeBadge.classList.remove('connected')
-    nativeBadge.title = 'Desktop app not detected — using browser storage'
+    nativeBadge.title = t('nativeOfflineTitle')
   }
 }
 
-init().catch(() => showLocked())
-updateNativeBadge().catch(() => { /* non-critical */ })
+// ── Locale ────────────────────────────────────────────────────────────────────
+
+/** Language selector in the header: lists every catalog, native names via Intl.DisplayNames. */
+function mountLanguageSelect() {
+  const sel = document.getElementById('lang-select') as HTMLSelectElement
+  sel.innerHTML = ''
+  for (const loc of SUPPORTED_LOCALES) {
+    const opt = document.createElement('option')
+    opt.value = loc
+    opt.textContent = new Intl.DisplayNames([loc], { type: 'language' }).of(loc) ?? loc
+    sel.appendChild(opt)
+  }
+  sel.value = tr.locale
+  sel.onchange = () => { void setLocale(sel.value) }
+}
+
+/** Switch language: persist the choice, re-translate static markup, re-render dynamic views. */
+async function setLocale(locale: string) {
+  await saveLocale(locale)
+  await startI18n()
+  mountFileImports()
+  // The one-time recovery phrase must stay on screen; init() would swap the view and lose it.
+  if (mnemonicPanel.style.display !== 'block') await init()
+  await updateNativeBadge()
+}
+
+async function startI18n() {
+  tr = await loadTranslator()
+  document.documentElement.lang = tr.locale
+  applyI18n(document, tr)
+  mountLanguageSelect()
+}
+
+function mountFileImports() {
+  for (const id of ['file-import-locked', 'file-import-unlocked']) document.getElementById(id)!.replaceChildren()
+  mountFileImport(document.getElementById('file-import-locked')!, false)
+  mountFileImport(document.getElementById('file-import-unlocked')!, true)
+}
+
+async function boot() {
+  await startI18n()
+  mountFileImports()
+  await init()
+  await updateNativeBadge()
+}
+boot().catch(() => showLocked())
