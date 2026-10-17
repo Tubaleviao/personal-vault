@@ -34,12 +34,18 @@ export function describeMergeChanges(s: MergeSummary): string {
  * Merge `other` into `vault`. Same owner: full merge (tombstones, last-writer-wins).
  * Different owners: claims are imported one by one. Returns the added count and a change note.
  */
-export function mergeOrImport(vault: Vault, other: Vault): { added: number; note: string } {
+export interface MergeChanges { deleted: number; remoteWins: number; grantsRevoked: number }
+
+export function mergeOrImport(vault: Vault, other: Vault): { added: number; note: string; changes: MergeChanges } {
   if (vault.owner.id === other.owner.id) {
     const summary = vault.mergeFrom(other)
-    return { added: summary.onlyRemote, note: describeMergeChanges(summary) }
+    return {
+      added: summary.onlyRemote,
+      note: describeMergeChanges(summary),
+      changes: { deleted: summary.deleted, remoteWins: summary.remoteWins, grantsRevoked: summary.grantsRevoked },
+    }
   }
   const before = vault.listClaims().length
   for (const claim of other.listClaims()) vault.importClaim(claim)
-  return { added: Math.max(0, vault.listClaims().length - before), note: '' }
+  return { added: Math.max(0, vault.listClaims().length - before), note: '', changes: { deleted: 0, remoteWins: 0, grantsRevoked: 0 } }
 }

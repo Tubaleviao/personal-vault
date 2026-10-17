@@ -113,6 +113,12 @@ const iifeCtx = await esbuild.context({
 copyFileSync(join(root, 'extension/manifest.json'), join(outdir, 'manifest.json'))
 copyFileSync(join(root, 'extension/popup/index.html'), join(outdir, 'popup/index.html'))
 
+// Copy chrome.i18n locales (manifest name/description for the store listing)
+for (const loc of readdirSync(join(root, 'extension/_locales'))) {
+  mkdirSync(join(outdir, '_locales', loc), { recursive: true })
+  copyFileSync(join(root, 'extension/_locales', loc, 'messages.json'), join(outdir, '_locales', loc, 'messages.json'))
+}
+
 // Copy icons
 const iconsDir = join(outdir, 'icons')
 mkdirSync(iconsDir, { recursive: true })

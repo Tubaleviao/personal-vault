@@ -3,6 +3,7 @@ import type { Vault, Claim, PersistedVault } from '@vault/vault'
 import { CREDENTIAL_CLAIM_TYPE } from '@vault/form-filler'
 import type { CredentialValue } from '@vault/form-filler'
 import { writeVaultFile } from '../tauriVault'
+import { useI18n } from '../i18n'
 
 interface Props {
   vault: Vault
@@ -14,12 +15,13 @@ function listCredentials(vault: Vault): Claim[] {
 }
 
 export default function Credentials({ vault, onVaultChanged }: Props) {
+  const { t, describeError } = useI18n()
   const [credentials, setCredentials] = useState<Claim[]>(() => listCredentials(vault))
   const [revealed, setRevealed] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!window.confirm('Delete this saved credential?')) return
+    if (!window.confirm(t('desktop.credentials_confirm_delete'))) return
     try {
       vault.deleteClaim(id)
       const persisted = await vault.seal()
@@ -27,15 +29,15 @@ export default function Credentials({ vault, onVaultChanged }: Props) {
       setCredentials(listCredentials(vault))
       onVaultChanged(vault, persisted)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err)
     }
-  }, [vault, onVaultChanged])
+  }, [vault, onVaultChanged, t])
 
   return (
     <div>
-      <h2 style={styles.heading}>Credentials</h2>
-      {error && <div style={styles.error}>{error}</div>}
-      {credentials.length === 0 && <div style={styles.empty}>No data</div>}
+      <h2 style={styles.heading}>{t('desktop.nav_credentials')}</h2>
+      {error != null && <div style={styles.error}>{describeError(error)}</div>}
+      {credentials.length === 0 && <div style={styles.empty}>{t('desktop.credentials_empty')}</div>}
       <div style={styles.list}>
         {credentials.map(claim => {
           const v = claim.value as CredentialValue
@@ -53,9 +55,9 @@ export default function Credentials({ vault, onVaultChanged }: Props) {
                   style={styles.iconBtn}
                   onClick={() => setRevealed(revealed === claim.id ? null : claim.id)}
                 >
-                  {revealed === claim.id ? 'Hide' : 'Show'}
+                  {revealed === claim.id ? t('desktop.hide') : t('desktop.show')}
                 </button>
-                <button style={styles.iconBtnDanger} onClick={() => { void handleDelete(claim.id) }}>✕</button>
+                <button style={styles.iconBtnDanger} title={t('desktop.delete')} aria-label={t('desktop.delete')} onClick={() => { void handleDelete(claim.id) }}>✕</button>
               </div>
             </div>
           )

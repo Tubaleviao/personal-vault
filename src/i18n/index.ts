@@ -103,9 +103,16 @@ export const ERROR_CODES = [
 ] as const
 export type ErrorCode = typeof ERROR_CODES[number]
 
+/** Encode an error code with optional technical detail (`CODE:detail`) for transport as a string. */
+export function codedError(code: ErrorCode, detail?: string): string {
+  return detail ? `${code}:${detail}` : code
+}
+
 /** Render an error code (optionally carrying a detail) as a translated message. */
 export function errorMessage(tr: Translator, code: string | undefined | null, detail?: string): string {
   if (!code) return tr.t('error.UNKNOWN')
+  const i = code.indexOf(':')
+  if (i > 0) { detail = detail ?? code.slice(i + 1); code = code.slice(0, i) }
   const key = `error.${code}`
   const msg = tr.t(key, { detail: detail ?? '' })
   return msg === key ? tr.t('error.UNKNOWN') + (detail ? `: ${detail}` : '') : msg

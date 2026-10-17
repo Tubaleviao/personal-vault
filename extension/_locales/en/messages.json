@@ -1,0 +1,5 @@
+{
+  "extName": { "message": "Personal Vault Form Filler", "description": "Extension name (store listing)" },
+  "extDescription": { "message": "Fill web forms from your personal vault. You approve per-site, per-field. No data is shared without your consent.", "description": "Extension description (store listing)" },
+  "actionTitle": { "message": "Personal Vault", "description": "Toolbar button tooltip" }
+}

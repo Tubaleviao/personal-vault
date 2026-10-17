@@ -36,7 +36,8 @@ import {
 import type { CredentialValue } from '../src/form-filler'
 import { Vault } from '../src/vault'
 import { parseVaultFileText } from '../src/vault-file'
-import { mergeOrImport } from '../src/merge'
+import { mergeOrImport, type MergeChanges } from '../src/merge'
+import { codedError } from '../src/i18n'
 import type { PersistedVault } from '../src/vault'
 import { generateMnemonicBundle, restoreFromMnemonic, verifyMnemonicCommitment } from '../src/recovery'
 import { didFromSeed } from '../src/did'
@@ -196,13 +197,13 @@ async function handleMessage(
 
   if (message.type === 'UNLOCK_VAULT') {
     if (!message.passphrase) {
-      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'No passphrase' })
+      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'NO_PASSPHRASE' })
       return
     }
 
     const blob = await loadVaultBlob()
     if (!blob) {
-      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'No vault found' })
+      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'NO_VAULT' })
       return
     }
 
@@ -216,7 +217,7 @@ async function handleMessage(
         const bundle = await restoreFromMnemonic(message.mnemonic)
         if (bundle) {
           if (!verifyMnemonicCommitment(message.mnemonic, vault.header.mnemonicCommitment)) {
-            sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'Recovery phrase does not match this vault' })
+            sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: 'MNEMONIC_MISMATCH' })
             return
           }
           ownerPrivateKey = bundle.keypair.privateKey
@@ -233,14 +234,15 @@ async function handleMessage(
       const activeSource = _selectedVaultSource ?? (_nativeHostAvailable ? 'native' : 'local')
       sendResponse({ type: 'UNLOCK_RESULT', ok: true, ownerDid: vault.owner.did, activeSource })
     } catch (err) {
-      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: String(err) })
+      const wrong = err instanceof Error && err.message === 'Incorrect passphrase'
+      sendResponse({ type: 'UNLOCK_RESULT', ok: false, error: wrong ? 'WRONG_PASSPHRASE' : codedError('UNKNOWN', String(err)) })
     }
     return
   }
 
   if (message.type === 'CREATE_VAULT') {
     if (!message.passphrase) {
-      sendResponse({ type: 'CREATE_RESULT', ok: false, error: 'No passphrase' })
+      sendResponse({ type: 'CREATE_RESULT', ok: false, error: 'NO_PASSPHRASE' })
       return
     }
 
@@ -301,7 +303,7 @@ async function handleMessage(
 
       sendResponse({ type: 'CREATE_RESULT', ok: true, mnemonic: bundle.mnemonic, ownerDid: didDoc.id, activeSource: targetSource })
     } catch (err) {
-      sendResponse({ type: 'CREATE_RESULT', ok: false, error: String(err) })
+      sendResponse({ type: 'CREATE_RESULT', ok: false, error: codedError('UNKNOWN', String(err)) })
     }
     return
   }
@@ -570,7 +572,7 @@ async function handleMessage(
 
   if (message.type === 'MERGE_VAULT') {
     if (!session) {
-      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: 'Vault is locked' })
+      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: 'VAULT_LOCKED' })
       return
     }
 
@@ -583,21 +585,21 @@ async function handleMessage(
         otherBlob = await nativeReadVault(message.name)
       }
     } catch (err) {
-      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: `Could not read vault: ${err}` })
+      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: codedError('VAULT_FILE_UNREADABLE', String(err)) })
       return
     }
 
     if (!otherBlob) {
-      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: 'No vault found at that source' })
+      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: 'SOURCE_NOT_FOUND' })
       return
     }
 
     try {
       const other = await Vault.open(otherBlob, message.passphrase)
       let added = 0
-      let note = ''
+      let changes: MergeChanges | undefined
       try {
-        ;({ added, note } = mergeOrImport(session.vault, other))
+        ;({ added, changes } = mergeOrImport(session.vault, other))
       } finally {
         other.discard().catch(() => { /* best effort */ })
       }
@@ -605,9 +607,9 @@ async function handleMessage(
       const blob = await session.vault.seal()
       await saveVaultBlob(blob)
 
-      sendResponse({ type: 'MERGE_RESULT', ok: true, added, note })
+      sendResponse({ type: 'MERGE_RESULT', ok: true, added, changes })
     } catch (err) {
-      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: String(err) })
+      sendResponse({ type: 'MERGE_RESULT', ok: false, added: 0, error: codedError('UNKNOWN', String(err)) })
     }
     return
   }
@@ -615,11 +617,11 @@ async function handleMessage(
   if (message.type === 'IMPORT_VAULT_FILE') {
     const blob = parseVaultFileText(message.text)
     if (!blob) {
-      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'The file does not appear to be a valid vault.' })
+      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'INVALID_VAULT_FILE' })
       return
     }
     if (!message.passphrase) {
-      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'No passphrase' })
+      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'NO_PASSPHRASE' })
       return
     }
 
@@ -630,26 +632,26 @@ async function handleMessage(
       const wrong = err instanceof Error && err.message === 'Incorrect passphrase'
       sendResponse({
         type: 'IMPORT_FILE_RESULT', ok: false,
-        error: wrong ? 'Wrong passphrase for that vault file.' : 'That vault file could not be opened; it may be damaged.',
+        error: wrong ? 'WRONG_PASSPHRASE' : 'VAULT_FILE_UNREADABLE',
       })
       return
     }
 
     try {
       if (session) {
-        const { added, note } = mergeOrImport(session.vault, other)
+        const { added, changes } = mergeOrImport(session.vault, other)
         await saveVaultBlob(await session.vault.seal())
-        sendResponse({ type: 'MERGE_RESULT', ok: true, added, note })
+        sendResponse({ type: 'MERGE_RESULT', ok: true, added, changes })
       } else {
         // Locked: only fill an empty browser slot — never overwrite an existing vault.
         if (await useNativeHost()) {
           // _selectedVaultSource resets on lock, so a browser vault would be ignored in favour of the desktop vault.
-          sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'The desktop app is available. Import the file there, or unlock a vault and merge it.' })
+          sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'DESKTOP_AVAILABLE' })
           return
         }
         const existing = await chrome.storage.local.get('vault')
         if (existing['vault']) {
-          sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'A browser vault already exists. Unlock it, then import the file to merge.' })
+          sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: 'BROWSER_VAULT_EXISTS' })
           return
         }
         await chrome.storage.local.set({ vault: blob })
@@ -657,7 +659,7 @@ async function handleMessage(
         sendResponse({ type: 'IMPORT_FILE_RESULT', ok: true })
       }
     } catch (err) {
-      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: String(err) })
+      sendResponse({ type: 'IMPORT_FILE_RESULT', ok: false, error: codedError('UNKNOWN', String(err)) })
     } finally {
       other.discard().catch(() => { /* best effort */ })
     }
@@ -674,22 +676,22 @@ async function handleMessage(
       }
       sendResponse({ type: 'DELETE_RESULT', ok: true })
     } catch (err) {
-      sendResponse({ type: 'DELETE_RESULT', ok: false, error: String(err) })
+      sendResponse({ type: 'DELETE_RESULT', ok: false, error: codedError('UNKNOWN', String(err)) })
     }
     return
   }
 
   if (message.type === 'EXPORT_TO_DESKTOP') {
     if (!session) {
-      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Vault is locked' })
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'VAULT_LOCKED' })
       return
     }
     if (_selectedVaultSource !== 'local') {
-      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Vault is already on the desktop' })
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'ALREADY_ON_DESKTOP' })
       return
     }
     if (!(await useNativeHost())) {
-      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'Desktop app not connected' })
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: 'DESKTOP_NOT_CONNECTED' })
       return
     }
 
@@ -717,7 +719,7 @@ async function handleMessage(
 
       sendResponse({ type: 'EXPORT_RESULT', ok: true, name: targetName })
     } catch (err) {
-      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: String(err) })
+      sendResponse({ type: 'EXPORT_RESULT', ok: false, error: codedError('UNKNOWN', String(err)) })
     }
     return
   }

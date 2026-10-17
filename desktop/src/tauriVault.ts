@@ -9,6 +9,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type { PersistedVault } from '@vault/vault'
 import { isPersistedVault } from '@vault/vault-file'
+import { UiError } from './uiError'
 
 let _activeVaultName = 'vault.json'
 
@@ -30,9 +31,9 @@ export async function readVaultFile(): Promise<PersistedVault | null> {
   try {
     parsed = JSON.parse(raw)
   } catch {
-    throw new Error('Local vault file is corrupt (not valid JSON); it was left untouched')
+    throw new UiError('desktop.err_local_corrupt')
   }
-  if (!isPersistedVault(parsed)) throw new Error('Local vault file is not a valid vault; it was left untouched')
+  if (!isPersistedVault(parsed)) throw new UiError('desktop.err_local_invalid')
   return parsed
 }
 
@@ -66,7 +67,8 @@ export const STORAGE_MESSAGES: Record<StorageErrorCode, string> = {
 }
 
 export class StorageError extends Error {
-  constructor(readonly code: StorageErrorCode, detail?: string) {
+  /** `message` is English, for logs only; the UI renders `desktop.storage_err_<code>` instead. */
+  constructor(readonly code: StorageErrorCode, readonly detail?: string) {
     super(STORAGE_MESSAGES[code] + (detail && (code === 'IO' || code === 'NOT_CONFIGURED') ? ` (${detail})` : ''))
     this.name = 'StorageError'
   }

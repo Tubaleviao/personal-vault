@@ -1,1 +1,16 @@
-{}
+{
+  "appName": "Personal Vault",
+  "fillPrompt_one": "Fill {count} field from your vault?",
+  "fillPrompt_other": "Fill {count} fields from your vault?",
+  "fillOnce": "Fill once",
+  "alwaysAllow": "Always allow",
+  "filled_one": "Vault filled {count} field",
+  "filled_other": "Vault filled {count} fields",
+  "fillCredentialsPrompt": "Fill saved credentials for {origin}?",
+  "fill": "Fill",
+  "savePasswordPrompt": "Save password for {host}?",
+  "updatePasswordPrompt": "Update saved password for {host}?",
+  "save": "Save",
+  "update": "Update",
+  "notNow": "Not now"
+}

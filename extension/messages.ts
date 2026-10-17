@@ -262,8 +262,9 @@ export interface MsgMergeResult {
   type: 'MERGE_RESULT'
   ok: boolean
   added: number
-  /** Other changes the merge made (deletions, replaced claims, revoked grants). */
-  note?: string
+  /** Other changes the merge made (deletions, replaced claims, revoked grants); the popup renders them. */
+  changes?: { deleted: number; remoteWins: number; grantsRevoked: number }
+  /** Error code (see src/i18n ERROR_CODES), optionally `CODE:detail`. Never English text. */
   error?: string
 }
 

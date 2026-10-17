@@ -16,8 +16,13 @@ import type {
   ContentToBackground, BackgroundToContent,
   MsgFormDetected, DetectedField,
 } from './messages'
-import type { FillMap, CredentialEntry } from '../src/form-filler'
-import { FILL_RULES } from '../src/form-filler'
+import type { FillMap, CredentialEntry, FieldHints } from '../src/form-filler'
+import { FILL_RULES, classifyField } from '../src/form-filler'
+import { createTranslator, type Translator } from '../src/i18n'
+import { loadTranslator, claimLabel } from './i18n'
+
+// Active translator; replaced by the user's locale at the start of main().
+let tr: Translator = createTranslator()
 
 // ── Field detection ───────────────────────────────────────────────────────────
 
@@ -43,7 +48,7 @@ function detectFields(): DetectedField[] {
       ? autocomplete.split(' ').some(token => KNOWN_AUTOCOMPLETE.has(token))
       : false
 
-    if (matchesSelector || matchesAutocomplete) {
+    if (matchesSelector || matchesAutocomplete || classifyField(fieldHints(el)) !== null) {
       found.push({
         selector: buildSelector(el),
         autocomplete,
@@ -54,6 +59,37 @@ function detectFields(): DetectedField[] {
   }
 
   return found
+}
+
+/** Collect the attributes classifyField() needs, including the associated <label> text. */
+function fieldHints(el: HTMLInputElement | HTMLSelectElement): FieldHints {
+  const labelText = el.labels?.[0]?.textContent
+    ?? el.getAttribute('aria-label')
+    ?? (el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`)?.textContent : null)
+    ?? null
+  return {
+    name: el.getAttribute('name'),
+    id: el.id || null,
+    label: labelText,
+    placeholder: el.getAttribute('placeholder'),
+    autocomplete: el.getAttribute('autocomplete'),
+    type: el instanceof HTMLInputElement ? el.type : null,
+  }
+}
+
+/** Locate the control for a fill entry: CSS selectors first, then locale-aware label matching. */
+function findFillTarget(entry: FillMap[number]): Element | null {
+  for (const sel of entry.selectors) {
+    try {
+      const el = document.querySelector(sel)
+      if (el) return el
+    } catch { /* bad selector */ }
+  }
+  const candidates = document.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input:not([type="hidden"]), select')
+  for (const el of candidates) {
+    if (classifyField(fieldHints(el)) === entry.claimType) return el
+  }
+  return null
 }
 
 function buildSelector(el: Element): string {
@@ -68,11 +104,7 @@ function buildSelector(el: Element): string {
 function applyFillMap(fillMap: FillMap): number {
   let filled = 0
   for (const entry of fillMap) {
-    let el: Element | null = null
-    for (const sel of entry.selectors) {
-      try { el = document.querySelector(sel) } catch { /* bad selector */ }
-      if (el) break
-    }
+    const el = findFillTarget(entry)
     if (!el) continue
 
     if (el instanceof HTMLInputElement) {
@@ -113,18 +145,26 @@ function showApprovalPrompt(claimTypes: string[], onApprove: (types: string[], p
 
   const label = document.createElement('div')
   label.style.marginBottom = '10px'
-  label.innerHTML = `<strong style="color:#7dd3fc">Personal Vault</strong><br>Fill ${claimTypes.length} field${claimTypes.length === 1 ? '' : 's'} from your vault?<br><span style="color:#94a3b8;font-size:11px">${claimTypes.map(t => t.replace('schema:', '')).join(', ')}</span>`
+  const strong = document.createElement('strong')
+  strong.style.color = '#7dd3fc'
+  strong.textContent = tr.t('content.appName')
+  const detail = document.createElement('span')
+  detail.style.cssText = 'color:#94a3b8;font-size:11px'
+  detail.textContent = claimTypes.map(t => claimLabel(tr, t)).join(', ')
+  label.append(strong, document.createElement('br'),
+    document.createTextNode(tr.t('content.fillPrompt', { count: claimTypes.length })),
+    document.createElement('br'), detail)
 
   const row = document.createElement('div')
   row.setAttribute('style', 'display:flex;gap:8px;margin-top:10px')
 
   const btnFill = document.createElement('button')
-  btnFill.textContent = 'Fill once'
+  btnFill.textContent = tr.t('content.fillOnce')
   btnFill.setAttribute('style', 'flex:1;background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px')
   btnFill.onclick = () => { banner.remove(); onApprove(claimTypes, false) }
 
   const btnAlways = document.createElement('button')
-  btnAlways.textContent = 'Always allow'
+  btnAlways.textContent = tr.t('content.alwaysAllow')
   btnAlways.setAttribute('style', 'flex:1;background:#16a34a;color:#fff;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px')
   btnAlways.onclick = () => { banner.remove(); onApprove(claimTypes, true) }
 
@@ -155,7 +195,7 @@ function showFillConfirmation(count: number) {
     'padding:10px 16px', 'font-family:system-ui,sans-serif', 'font-size:13px',
     'box-shadow:0 4px 16px rgba(0,0,0,.3)',
   ].join(';'))
-  toast.textContent = `Vault filled ${count} field${count === 1 ? '' : 's'}`
+  toast.textContent = tr.t('content.filled', { count })
   document.body.appendChild(toast)
   setTimeout(() => toast.remove(), 2500)
 }
@@ -216,7 +256,13 @@ function showCredentialFillBanner(credentials: CredentialEntry[], loginForm: Log
   header.setAttribute('style', 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px')
 
   const title = document.createElement('div')
-  title.innerHTML = `<strong style="color:#7dd3fc">Personal Vault</strong><br><span style="color:#94a3b8;font-size:11px">Fill saved credentials for ${origin}?</span>`
+  const strong = document.createElement('strong')
+  strong.style.color = '#7dd3fc'
+  strong.textContent = tr.t('content.appName')
+  const sub = document.createElement('span')
+  sub.style.cssText = 'color:#94a3b8;font-size:11px'
+  sub.textContent = tr.t('content.fillCredentialsPrompt', { origin })
+  title.append(strong, document.createElement('br'), sub)
 
   const btnDismiss = document.createElement('button')
   btnDismiss.textContent = '✕'
@@ -236,7 +282,7 @@ function showCredentialFillBanner(credentials: CredentialEntry[], loginForm: Log
     label.setAttribute('style', 'font-size:12px;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px')
 
     const btnFill = document.createElement('button')
-    btnFill.textContent = 'Fill'
+    btnFill.textContent = tr.t('content.fill')
     btnFill.setAttribute('style', 'background:#3b82f6;color:#fff;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:12px;flex-shrink:0')
     btnFill.onclick = async () => {
       banner.remove()
@@ -283,11 +329,10 @@ function showCredentialSaveBanner(
   header.setAttribute('style', 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px')
 
   const title = document.createElement('div')
-  const action = isUpdate ? 'Update saved password' : 'Save password'
-  const titleStrong = document.createElement('strong')
+    const titleStrong = document.createElement('strong')
   titleStrong.style.color = '#7dd3fc'
-  titleStrong.textContent = 'Personal Vault'
-  const titleActionText = document.createTextNode(`\n${action} for ${hostname}?`)
+  titleStrong.textContent = tr.t('content.appName')
+  const titleActionText = document.createTextNode(tr.t(isUpdate ? 'content.updatePasswordPrompt' : 'content.savePasswordPrompt', { host: hostname }))
   const titleUser = document.createElement('span')
   titleUser.style.cssText = 'color:#94a3b8;font-size:11px'
   titleUser.textContent = username
@@ -315,7 +360,7 @@ function showCredentialSaveBanner(
   row.setAttribute('style', 'display:flex;gap:8px;margin-top:10px')
 
   const btnSave = document.createElement('button')
-  btnSave.textContent = isUpdate ? 'Update' : 'Save'
+  btnSave.textContent = tr.t(isUpdate ? 'content.update' : 'content.save')
   btnSave.setAttribute('style', 'flex:1;background:#16a34a;color:#fff;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px')
   btnSave.onclick = () => {
     banner.remove()
@@ -331,7 +376,7 @@ function showCredentialSaveBanner(
   }
 
   const btnNotNow = document.createElement('button')
-  btnNotNow.textContent = 'Not now'
+  btnNotNow.textContent = tr.t('content.notNow')
   btnNotNow.setAttribute('style', 'flex:1;background:#334155;color:#f1f5f9;border:none;border-radius:5px;padding:6px 10px;cursor:pointer;font-size:12px')
   btnNotNow.onclick = () => {
     banner.remove()
@@ -368,6 +413,7 @@ let activeLoginForm: LoginForm | null = null
 let credentialPromptSuppressed = false
 
 async function main() {
+  tr = await loadTranslator()
   const origin = window.location.origin
 
   // ── Identity field filling ────────────────────────────────────────────────

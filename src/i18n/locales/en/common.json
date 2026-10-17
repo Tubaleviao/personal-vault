@@ -1,1 +1,16 @@
-{}
+{
+  "claim.givenName": "First name",
+  "claim.familyName": "Last name",
+  "claim.name": "Full name",
+  "claim.email": "Email",
+  "claim.telephone": "Phone",
+  "claim.birthDate": "Date of birth",
+  "claim.streetAddress": "Street address",
+  "claim.addressLocality": "City",
+  "claim.addressRegion": "State",
+  "claim.postalCode": "Postal code",
+  "claim.addressCountry": "Country",
+  "claim.jobTitle": "Job title",
+  "claim.worksFor": "Employer",
+  "claim.taxID": "Tax ID"
+}

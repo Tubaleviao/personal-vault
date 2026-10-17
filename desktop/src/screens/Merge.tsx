@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import type { Vault, PersistedVault } from '@vault/vault'
+import type { Vault, PersistedVault, MergeSummary } from '@vault/vault'
 import { Vault as VaultClass } from '@vault/vault'
 import { listVaultFiles, readVaultFile, writeVaultFile, setActiveVaultName, deleteVaultFile } from '../tauriVault'
 import type { VaultFileEntry } from '../tauriVault'
-import { mergeOrImport } from '@vault/merge'
+import { useI18n } from '../i18n'
+import { UiError } from '../uiError'
 
 interface Props {
   vault: Vault
@@ -20,6 +21,7 @@ interface MergeState {
 }
 
 export default function Merge({ vault, onVaultChanged, activeVaultName }: Props) {
+  const { t, formatNumber, describeError } = useI18n()
   const [others, setOthers] = useState<VaultFileEntry[]>([])
   const [mergeStates, setMergeStates] = useState<Record<string, MergeState>>({})
   const [loading, setLoading] = useState(true)
@@ -34,6 +36,15 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [activeVaultName])
+
+  /** Describe changes a merge made beyond adding claims (deletions, overwrites, revoked grants). */
+  const describeChanges = (s: MergeSummary): string => {
+    const parts: string[] = []
+    if (s.deleted > 0) parts.push(t('desktop.merge_note_deleted', { count: s.deleted, n: formatNumber(s.deleted) }))
+    if (s.remoteWins > 0) parts.push(t('desktop.merge_note_replaced', { count: s.remoteWins, n: formatNumber(s.remoteWins) }))
+    if (s.grantsRevoked > 0) parts.push(t('desktop.merge_note_grants_revoked', { count: s.grantsRevoked, n: formatNumber(s.grantsRevoked) }))
+    return parts.join(', ')
+  }
 
   const setPassphrase = (name: string, passphrase: string) =>
     setMergeStates(s => ({ ...s, [name]: { ...s[name], passphrase, result: null } }))
@@ -52,13 +63,22 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
       // Restore active vault name immediately.
       setActiveVaultName(activeVaultName)
 
-      if (!otherPersisted) throw new Error('Could not read vault file.')
+      if (!otherPersisted) throw new UiError('desktop.merge_err_read')
 
       const other = await VaultClass.open(otherPersisted, state.passphrase)
       let added = 0
       let note = ''
       try {
-        ;({ added, note } = mergeOrImport(vault, other))
+        // Same owner: full merge. Different owners: import claims one by one.
+        if (vault.owner.id === other.owner.id) {
+          const summary: MergeSummary = vault.mergeFrom(other)
+          added = summary.onlyRemote
+          note = describeChanges(summary)
+        } else {
+          const before = vault.listClaims().length
+          for (const claim of other.listClaims()) vault.importClaim(claim)
+          added = Math.max(0, vault.listClaims().length - before)
+        }
       } finally {
         other.lock().catch(() => { /* best effort */ })
       }
@@ -71,35 +91,35 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
       await deleteVaultFile(name)
       setOthers(prev => prev.filter(f => f.name !== name))
 
-      const addedMsg = added > 0 ? `Merged ${added} claim${added === 1 ? '' : 's'}` : 'No new claims to merge'
+      const addedMsg = added > 0 ? t('desktop.merge_added', { count: added, n: formatNumber(added) }) : t('desktop.merge_none')
       setMergeStates(s => ({
         ...s,
-        [name]: { ...s[name], busy: false, passphrase: '', result: { ok: true, msg: `${addedMsg}${note ? ` (${note})` : ''} — source vault deleted` } },
+        [name]: { ...s[name], busy: false, passphrase: '', result: { ok: true, msg: t(note ? 'desktop.merge_done_note' : 'desktop.merge_done', { added: addedMsg, note }) } },
       }))
     } catch (err) {
       setActiveVaultName(activeVaultName)
       setMergeStates(s => ({
         ...s,
-        [name]: { ...s[name], busy: false, result: { ok: false, msg: err instanceof Error ? err.message : String(err) } },
+        [name]: { ...s[name], busy: false, result: { ok: false, msg: describeError(err) } },
       }))
     }
-  }, [mergeStates, vault, activeVaultName, onVaultChanged])
+  }, [mergeStates, vault, activeVaultName, onVaultChanged, t, formatNumber, describeError])
 
-  if (loading) return <div style={styles.empty}>Loading vault list…</div>
+  if (loading) return <div style={styles.empty}>{t('desktop.merge_loading')}</div>
 
   if (others.length === 0) {
     return (
       <div>
-        <h1 style={styles.heading}>Import from another vault</h1>
-        <p style={styles.empty}>No other vault files found in the vault directory.</p>
+        <h1 style={styles.heading}>{t('desktop.merge_title')}</h1>
+        <p style={styles.empty}>{t('desktop.merge_no_others')}</p>
       </div>
     )
   }
 
   return (
     <div>
-      <h1 style={styles.heading}>Import from another vault</h1>
-      <p style={styles.subtitle}>Enter the passphrase of the vault you want to import. Claims that already exist are skipped.</p>
+      <h1 style={styles.heading}>{t('desktop.merge_title')}</h1>
+      <p style={styles.subtitle}>{t('desktop.merge_subtitle')}</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>
         {others.map(file => {
           const state = mergeStates[file.name]
@@ -109,7 +129,7 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
             <div key={file.name} style={styles.card}>
               <div style={styles.cardHeader}>
                 <span style={styles.cardName}>{friendlyName}</span>
-                <span style={styles.cardMeta}>Rev {file.vault.header.sequenceNumber ?? 0} · {file.vault.header.ownerId.slice(0, 8)}</span>
+                <span style={styles.cardMeta}>{t('desktop.merge_rev_owner', { revision: formatNumber(file.vault.header.sequenceNumber ?? 0), owner: file.vault.header.ownerId.slice(0, 8) })}</span>
               </div>
               <form
                 onSubmit={e => { e.preventDefault(); void handleMerge(file.name) }}
@@ -118,19 +138,19 @@ export default function Merge({ vault, onVaultChanged, activeVaultName }: Props)
                 <input
                   style={styles.input}
                   type="password"
-                  placeholder="Passphrase"
+                  placeholder={t('desktop.passphrase')}
                   value={state.passphrase}
                   onChange={e => setPassphrase(file.name, e.target.value)}
                   autoComplete="off"
                   disabled={state.busy}
                 />
                 <button style={styles.btn} type="submit" disabled={state.busy || !state.passphrase}>
-                  {state.busy ? 'Merging…' : 'Merge'}
+                  {state.busy ? t('desktop.merge_busy') : t('desktop.merge_btn')}
                 </button>
               </form>
               {!state.result && (
                 <div style={styles.warning}>
-                  The source vault file will be permanently deleted after a successful import.
+                  {t('desktop.merge_warning')}
                 </div>
               )}
               {state.result && (

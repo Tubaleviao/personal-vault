@@ -27,6 +27,8 @@
  */
 
 import type { Claim } from './vault'
+import enFields from './form-filler/locales/en.json'
+import ptFields from './form-filler/locales/pt-BR.json'
 
 // ── Field mapping ─────────────────────────────────────────────────────────────
 
@@ -44,120 +46,101 @@ export interface FillRule {
   autocompleteTokens: string[]
 }
 
-export const FILL_RULES: FillRule[] = [
-  {
-    claimType: 'schema:givenName',
-    selectors: [
-      'input[autocomplete="given-name"]',
-      'input[name="firstname"]', 'input[name="first_name"]', 'input[name="first-name"]',
-      'input[name*="first"][type="text"]',
-    ],
-    autocompleteTokens: ['given-name'],
-  },
-  {
-    claimType: 'schema:familyName',
-    selectors: [
-      'input[autocomplete="family-name"]',
-      'input[name="lastname"]', 'input[name="last_name"]', 'input[name="last-name"]',
-      'input[name*="last"][type="text"]',
-    ],
-    autocompleteTokens: ['family-name'],
-  },
-  {
-    claimType: 'schema:name',
-    selectors: [
-      'input[autocomplete="name"]',
-      'input[name="fullname"]', 'input[name="full_name"]', 'input[name="name"]',
-    ],
-    autocompleteTokens: ['name'],
-  },
-  {
-    claimType: 'schema:email',
-    selectors: [
-      'input[type="email"]',
-      'input[autocomplete="email"]',
-      'input[name="email"]', 'input[name*="email"]',
-    ],
-    autocompleteTokens: ['email'],
-  },
-  {
-    claimType: 'schema:telephone',
-    selectors: [
-      'input[type="tel"]',
-      'input[autocomplete="tel"]',
-      'input[name="phone"]', 'input[name*="phone"]', 'input[name*="tel"]',
-    ],
-    autocompleteTokens: ['tel', 'tel-national'],
-  },
-  {
-    claimType: 'schema:birthDate',
-    selectors: [
-      'input[autocomplete="bday"]',
-      'input[name="dob"]', 'input[name="birthdate"]', 'input[name="birth_date"]',
-      'input[name*="birth"][type="date"]',
-    ],
-    autocompleteTokens: ['bday'],
-  },
-  {
-    claimType: 'schema:streetAddress',
-    selectors: [
-      'input[autocomplete="street-address"]',
-      'input[autocomplete="address-line1"]',
-      'input[name="address"]', 'input[name="address1"]', 'input[name*="street"]',
-    ],
-    autocompleteTokens: ['street-address', 'address-line1'],
-  },
-  {
-    claimType: 'schema:addressLocality',
-    selectors: [
-      'input[autocomplete="address-level2"]',
-      'input[name="city"]', 'input[name*="city"]', 'input[name*="locality"]',
-    ],
-    autocompleteTokens: ['address-level2'],
-  },
-  {
-    claimType: 'schema:addressRegion',
-    selectors: [
-      'input[autocomplete="address-level1"]',
-      'input[name="state"]', 'input[name*="state"]', 'input[name*="region"]',
-      'select[name="state"]',
-    ],
-    autocompleteTokens: ['address-level1'],
-  },
-  {
-    claimType: 'schema:postalCode',
-    selectors: [
-      'input[autocomplete="postal-code"]',
-      'input[name="zip"]', 'input[name*="zip"]', 'input[name*="postal"]',
-    ],
-    autocompleteTokens: ['postal-code'],
-  },
-  {
-    claimType: 'schema:addressCountry',
-    selectors: [
-      'input[autocomplete="country"]', 'input[autocomplete="country-name"]',
-      'select[autocomplete="country"]', 'select[autocomplete="country-name"]',
-      'input[name="country"]', 'select[name="country"]',
-    ],
-    autocompleteTokens: ['country', 'country-name'],
-  },
-  {
-    claimType: 'schema:jobTitle',
-    selectors: [
-      'input[autocomplete="organization-title"]',
-      'input[name="title"]', 'input[name="job_title"]', 'input[name*="occupation"]',
-    ],
-    autocompleteTokens: ['organization-title'],
-  },
-  {
-    claimType: 'schema:worksFor',
-    selectors: [
-      'input[autocomplete="organization"]',
-      'input[name="company"]', 'input[name="employer"]', 'input[name*="organization"]',
-    ],
-    autocompleteTokens: ['organization'],
-  },
+/**
+ * Per-locale field-matching data (src/form-filler/locales/<locale>.json). Adding a language is
+ * data-only: add a JSON file and one entry to FIELD_LOCALES. Selectors and autocomplete tokens
+ * are unioned across locales (a pt-BR page can be filled by an en-locale user); `keywords` are
+ * accent-stripped label / name / placeholder phrases used by classifyField().
+ */
+interface LocaleFieldData { selectors: string[]; autocomplete: string[]; keywords: string[] }
+type LocaleFile = Record<string, LocaleFieldData>
+
+export const FIELD_LOCALES: Record<string, LocaleFile> = {
+  'en': enFields as LocaleFile,
+  'pt-BR': ptFields as LocaleFile,
+}
+
+/** Claim types the filler understands, in tie-break priority order. */
+const CLAIM_TYPE_ORDER = [
+  'schema:givenName', 'schema:familyName', 'schema:name', 'schema:email', 'schema:telephone',
+  'schema:birthDate', 'schema:streetAddress', 'schema:addressLocality', 'schema:addressRegion',
+  'schema:postalCode', 'schema:addressCountry', 'schema:jobTitle', 'schema:worksFor', 'schema:taxID',
 ]
+
+function uniq<T>(xs: T[]): T[] { return [...new Set(xs)] }
+
+export const FILL_RULES: FillRule[] = CLAIM_TYPE_ORDER.map(claimType => {
+  const parts = Object.values(FIELD_LOCALES).map(l => l[claimType]).filter(Boolean)
+  return {
+    claimType,
+    selectors: uniq(parts.flatMap(p => p.selectors)),
+    autocompleteTokens: uniq(parts.flatMap(p => p.autocomplete)),
+  }
+})
+
+// ── Locale-aware field classification ─────────────────────────────────────────
+
+/** Attributes of a form control that can identify its meaning. */
+export interface FieldHints {
+  name?: string | null
+  id?: string | null
+  label?: string | null
+  placeholder?: string | null
+  autocomplete?: string | null
+  type?: string | null
+}
+
+/** Lowercase, strip diacritics, split camelCase and punctuation into word tokens. */
+export function tokenize(text: string | null | undefined): string[] {
+  if (!text) return []
+  return text
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+}
+
+function containsSequence(tokens: string[], seq: string[]): boolean {
+  if (seq.length === 0 || seq.length > tokens.length) return false
+  for (let i = 0; i + seq.length <= tokens.length; i++) {
+    if (seq.every((w, j) => tokens[i + j] === w)) return true
+  }
+  return false
+}
+
+const KEYWORD_INDEX = CLAIM_TYPE_ORDER.map(claimType => ({
+  claimType,
+  keywords: uniq(Object.values(FIELD_LOCALES).flatMap(l => l[claimType]?.keywords ?? [])).map(tokenize),
+}))
+
+/**
+ * Decide which claim type a form control wants, in any supported locale.
+ * Order: exact autocomplete token → input type → most specific keyword (longest phrase) found in
+ * name / id / label / placeholder; ties go to the earlier entry in CLAIM_TYPE_ORDER.
+ * Returns null when nothing matches.
+ */
+export function classifyField(h: FieldHints): string | null {
+  if (h.autocomplete) {
+    const toks = h.autocomplete.split(' ')
+    for (const rule of FILL_RULES) {
+      if (rule.autocompleteTokens.some(t => toks.includes(t))) return rule.claimType
+    }
+  }
+  if (h.type === 'email') return 'schema:email'
+  if (h.type === 'tel') return 'schema:telephone'
+
+  const sources = [h.name, h.id, h.label, h.placeholder].map(tokenize).filter(t => t.length > 0)
+  let best: { claimType: string; score: number } | null = null
+  for (const { claimType, keywords } of KEYWORD_INDEX) {
+    for (const kw of keywords) {
+      if (sources.some(tokens => containsSequence(tokens, kw)) && (!best || kw.length > best.score)) {
+        best = { claimType, score: kw.length }
+      }
+    }
+  }
+  return best?.claimType ?? null
+}
 
 // ── FillMap ───────────────────────────────────────────────────────────────────
 
